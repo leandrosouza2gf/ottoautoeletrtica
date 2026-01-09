@@ -13,6 +13,7 @@ export interface Veiculo {
   placa: string;
   modelo: string;
   ano: string;
+  problemaInformado: string;
   createdAt: Date;
 }
 

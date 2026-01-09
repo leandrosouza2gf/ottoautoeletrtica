@@ -32,6 +32,7 @@ export default function Veiculos() {
     placa: '',
     modelo: '',
     ano: '',
+    problemaInformado: '',
   });
 
   const filteredVeiculos = veiculos.filter(
@@ -53,10 +54,11 @@ export default function Veiculos() {
         placa: veiculo.placa,
         modelo: veiculo.modelo,
         ano: veiculo.ano,
+        problemaInformado: veiculo.problemaInformado || '',
       });
     } else {
       setEditingVeiculo(null);
-      setFormData({ clienteId: '', placa: '', modelo: '', ano: '' });
+      setFormData({ clienteId: '', placa: '', modelo: '', ano: '', problemaInformado: '' });
     }
     setIsDialogOpen(true);
   };
@@ -73,7 +75,7 @@ export default function Veiculos() {
       });
     }
     setIsDialogOpen(false);
-    setFormData({ clienteId: '', placa: '', modelo: '', ano: '' });
+    setFormData({ clienteId: '', placa: '', modelo: '', ano: '', problemaInformado: '' });
   };
 
   const handleDelete = (id: string) => {
@@ -151,6 +153,9 @@ export default function Veiculos() {
                   <p><strong>Modelo:</strong> {veiculo.modelo}</p>
                   <p><strong>Ano:</strong> {veiculo.ano}</p>
                   <p><strong>Proprietário:</strong> {getClienteNome(veiculo.clienteId)}</p>
+                  {veiculo.problemaInformado && (
+                    <p><strong>Problema:</strong> {veiculo.problemaInformado}</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -220,6 +225,17 @@ export default function Veiculos() {
                   setFormData({ ...formData, ano: e.target.value })
                 }
                 placeholder="Ex: 2020"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="problemaInformado">Problema Informado</Label>
+              <Input
+                id="problemaInformado"
+                value={formData.problemaInformado}
+                onChange={(e) =>
+                  setFormData({ ...formData, problemaInformado: e.target.value })
+                }
+                placeholder="Descreva o problema relatado pelo cliente"
               />
             </div>
             <div className="flex gap-2 justify-end">
