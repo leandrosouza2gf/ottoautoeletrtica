@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useStore } from '@/store/useStore';
+import { usePecas, type Peca } from '@/hooks/usePecas';
+import { useFornecedores } from '@/hooks/useFornecedores';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,25 +20,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Wrench, Pencil, Trash2, Search } from 'lucide-react';
-import type { Peca } from '@/types';
+import { Wrench, Pencil, Trash2, Search, Loader2 } from 'lucide-react';
 
 export default function Pecas() {
-  const { pecas, fornecedores, addPeca, updatePeca, deletePeca } = useStore();
+  const { pecas, isLoading: isLoadingPecas, addPeca, updatePeca, deletePeca } = usePecas();
+  const { fornecedores, isLoading: isLoadingFornecedores } = useFornecedores();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPeca, setEditingPeca] = useState<Peca | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({
     nome: '',
-    fornecedorId: '',
-    valorCusto: 0,
+    fornecedor_id: null as string | null,
+    valor_custo: 0,
   });
 
   const filteredPecas = pecas.filter((p) =>
     p.nome.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getFornecedorNome = (fornecedorId: string) => {
+  const getFornecedorNome = (fornecedorId: string | null) => {
+    if (!fornecedorId) return 'N/A';
     const fornecedor = fornecedores.find((f) => f.id === fornecedorId);
     return fornecedor?.nome || 'N/A';
   };
@@ -47,12 +49,12 @@ export default function Pecas() {
       setEditingPeca(peca);
       setFormData({
         nome: peca.nome,
-        fornecedorId: peca.fornecedorId,
-        valorCusto: peca.valorCusto,
+        fornecedor_id: peca.fornecedor_id,
+        valor_custo: Number(peca.valor_custo),
       });
     } else {
       setEditingPeca(null);
-      setFormData({ nome: '', fornecedorId: '', valorCusto: 0 });
+      setFormData({ nome: '', fornecedor_id: null, valor_custo: 0 });
     }
     setIsDialogOpen(true);
   };
@@ -60,16 +62,12 @@ export default function Pecas() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingPeca) {
-      updatePeca(editingPeca.id, formData);
+      updatePeca({ id: editingPeca.id, ...formData });
     } else {
-      addPeca({
-        id: crypto.randomUUID(),
-        ...formData,
-        createdAt: new Date(),
-      });
+      addPeca(formData);
     }
     setIsDialogOpen(false);
-    setFormData({ nome: '', fornecedorId: '', valorCusto: 0 });
+    setFormData({ nome: '', fornecedor_id: null, valor_custo: 0 });
   };
 
   const handleDelete = (id: string) => {
@@ -79,11 +77,19 @@ export default function Pecas() {
   };
 
   const formatCurrency = (value: number) => {
-    return value.toLocaleString('pt-BR', {
+    return Number(value).toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
     });
   };
+
+  if (isLoadingPecas || isLoadingFornecedores) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -144,10 +150,10 @@ export default function Pecas() {
                     <tr key={peca.id} className="border-b last:border-0">
                       <td className="py-3 px-2 font-medium">{peca.nome}</td>
                       <td className="py-3 px-2 text-muted-foreground">
-                        {getFornecedorNome(peca.fornecedorId)}
+                        {getFornecedorNome(peca.fornecedor_id)}
                       </td>
                       <td className="py-3 px-2 text-right">
-                        {formatCurrency(peca.valorCusto)}
+                        {formatCurrency(peca.valor_custo)}
                       </td>
                       <td className="py-3 px-2 text-right">
                         <div className="flex gap-1 justify-end">
@@ -201,9 +207,9 @@ export default function Pecas() {
             <div className="space-y-2">
               <Label htmlFor="fornecedor">Fornecedor</Label>
               <Select
-                value={formData.fornecedorId}
+                value={formData.fornecedor_id || ''}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, fornecedorId: value })
+                  setFormData({ ...formData, fornecedor_id: value || null })
                 }
               >
                 <SelectTrigger>
@@ -225,9 +231,9 @@ export default function Pecas() {
                 type="number"
                 min="0"
                 step="0.01"
-                value={formData.valorCusto}
+                value={formData.valor_custo}
                 onChange={(e) =>
-                  setFormData({ ...formData, valorCusto: parseFloat(e.target.value) || 0 })
+                  setFormData({ ...formData, valor_custo: parseFloat(e.target.value) || 0 })
                 }
               />
             </div>
