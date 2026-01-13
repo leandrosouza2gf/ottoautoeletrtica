@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore } from '@/store/useStore';
+import { useClientes } from '@/hooks/useClientes';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,11 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Users, Pencil, Trash2, Search } from 'lucide-react';
-import type { Cliente } from '@/types';
+import { Users, Pencil, Trash2, Search, Loader2 } from 'lucide-react';
+import type { Cliente } from '@/hooks/useClientes';
 
 export default function Clientes() {
-  const { clientes, addCliente, updateCliente, deleteCliente } = useStore();
+  const { clientes, isLoading, addCliente, updateCliente, deleteCliente } = useClientes();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,9 +40,9 @@ export default function Clientes() {
       setEditingCliente(cliente);
       setFormData({
         nome: cliente.nome,
-        telefone: cliente.telefone,
-        documento: cliente.documento,
-        observacoes: cliente.observacoes,
+        telefone: cliente.telefone || '',
+        documento: cliente.documento || '',
+        observacoes: cliente.observacoes || '',
       });
     } else {
       setEditingCliente(null);
@@ -54,13 +54,9 @@ export default function Clientes() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingCliente) {
-      updateCliente(editingCliente.id, formData);
+      updateCliente({ id: editingCliente.id, ...formData });
     } else {
-      addCliente({
-        id: crypto.randomUUID(),
-        ...formData,
-        createdAt: new Date(),
-      });
+      addCliente(formData);
     }
     setIsDialogOpen(false);
     setFormData({ nome: '', telefone: '', documento: '', observacoes: '' });
@@ -71,6 +67,14 @@ export default function Clientes() {
       deleteCliente(id);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

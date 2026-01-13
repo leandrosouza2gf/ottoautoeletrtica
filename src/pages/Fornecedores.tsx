@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore } from '@/store/useStore';
+import { useFornecedores, type Fornecedor } from '@/hooks/useFornecedores';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,11 +13,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Building2, Pencil, Trash2, Search } from 'lucide-react';
-import type { Fornecedor } from '@/types';
+import { Building2, Pencil, Trash2, Search, Loader2 } from 'lucide-react';
 
 export default function Fornecedores() {
-  const { fornecedores, addFornecedor, updateFornecedor, deleteFornecedor } = useStore();
+  const { fornecedores, isLoading, addFornecedor, updateFornecedor, deleteFornecedor } = useFornecedores();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingFornecedor, setEditingFornecedor] = useState<Fornecedor | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,8 +37,8 @@ export default function Fornecedores() {
       setEditingFornecedor(fornecedor);
       setFormData({
         nome: fornecedor.nome,
-        telefone: fornecedor.telefone,
-        observacoes: fornecedor.observacoes,
+        telefone: fornecedor.telefone || '',
+        observacoes: fornecedor.observacoes || '',
       });
     } else {
       setEditingFornecedor(null);
@@ -51,13 +50,9 @@ export default function Fornecedores() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingFornecedor) {
-      updateFornecedor(editingFornecedor.id, formData);
+      updateFornecedor({ id: editingFornecedor.id, ...formData });
     } else {
-      addFornecedor({
-        id: crypto.randomUUID(),
-        ...formData,
-        createdAt: new Date(),
-      });
+      addFornecedor(formData);
     }
     setIsDialogOpen(false);
     setFormData({ nome: '', telefone: '', observacoes: '' });
@@ -68,6 +63,14 @@ export default function Fornecedores() {
       deleteFornecedor(id);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

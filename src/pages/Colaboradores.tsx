@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore } from '@/store/useStore';
+import { useColaboradores, type Colaborador } from '@/hooks/useColaboradores';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,18 +19,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { UserCog, Pencil, Trash2 } from 'lucide-react';
-import type { Colaborador } from '@/types';
+import { UserCog, Pencil, Trash2, Loader2 } from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
+
+type TipoComissao = Database['public']['Enums']['tipo_comissao'];
 
 export default function Colaboradores() {
-  const { colaboradores, addColaborador, updateColaborador, deleteColaborador } = useStore();
+  const { colaboradores, isLoading, addColaborador, updateColaborador, deleteColaborador } = useColaboradores();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingColaborador, setEditingColaborador] = useState<Colaborador | null>(null);
   const [formData, setFormData] = useState({
     nome: '',
     funcao: '',
-    tipoComissao: 'percentual' as 'percentual' | 'fixo',
-    valorComissao: 0,
+    tipo_comissao: 'percentual' as TipoComissao,
+    valor_comissao: 0,
   });
 
   const handleOpenDialog = (colaborador?: Colaborador) => {
@@ -38,13 +40,13 @@ export default function Colaboradores() {
       setEditingColaborador(colaborador);
       setFormData({
         nome: colaborador.nome,
-        funcao: colaborador.funcao,
-        tipoComissao: colaborador.tipoComissao,
-        valorComissao: colaborador.valorComissao,
+        funcao: colaborador.funcao || '',
+        tipo_comissao: colaborador.tipo_comissao,
+        valor_comissao: Number(colaborador.valor_comissao),
       });
     } else {
       setEditingColaborador(null);
-      setFormData({ nome: '', funcao: '', tipoComissao: 'percentual', valorComissao: 0 });
+      setFormData({ nome: '', funcao: '', tipo_comissao: 'percentual', valor_comissao: 0 });
     }
     setIsDialogOpen(true);
   };
@@ -52,16 +54,12 @@ export default function Colaboradores() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingColaborador) {
-      updateColaborador(editingColaborador.id, formData);
+      updateColaborador({ id: editingColaborador.id, ...formData });
     } else {
-      addColaborador({
-        id: crypto.randomUUID(),
-        ...formData,
-        createdAt: new Date(),
-      });
+      addColaborador(formData);
     }
     setIsDialogOpen(false);
-    setFormData({ nome: '', funcao: '', tipoComissao: 'percentual', valorComissao: 0 });
+    setFormData({ nome: '', funcao: '', tipo_comissao: 'percentual', valor_comissao: 0 });
   };
 
   const handleDelete = (id: string) => {
@@ -71,14 +69,22 @@ export default function Colaboradores() {
   };
 
   const formatComissao = (colaborador: Colaborador) => {
-    if (colaborador.tipoComissao === 'percentual') {
-      return `${colaborador.valorComissao}%`;
+    if (colaborador.tipo_comissao === 'percentual') {
+      return `${colaborador.valor_comissao}%`;
     }
-    return colaborador.valorComissao.toLocaleString('pt-BR', {
+    return Number(colaborador.valor_comissao).toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
     });
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -116,7 +122,7 @@ export default function Colaboradores() {
                     </div>
                     <div>
                       <p className="font-semibold">{colaborador.nome}</p>
-                      <p className="text-sm text-muted-foreground">{colaborador.funcao}</p>
+                      <p className="text-sm text-muted-foreground">{colaborador.funcao || 'Sem função'}</p>
                     </div>
                   </div>
                   <div className="flex gap-1">
@@ -141,7 +147,7 @@ export default function Colaboradores() {
                   <span className="text-muted-foreground">Comissão: </span>
                   <span className="font-medium">{formatComissao(colaborador)}</span>
                   <span className="text-muted-foreground text-xs ml-1">
-                    ({colaborador.tipoComissao === 'percentual' ? 'sobre mão de obra' : 'fixo'})
+                    ({colaborador.tipo_comissao === 'percentual' ? 'sobre mão de obra' : 'fixo'})
                   </span>
                 </div>
               </CardContent>
@@ -184,9 +190,9 @@ export default function Colaboradores() {
             <div className="space-y-2">
               <Label>Tipo de Comissão</Label>
               <Select
-                value={formData.tipoComissao}
-                onValueChange={(value: 'percentual' | 'fixo') =>
-                  setFormData({ ...formData, tipoComissao: value })
+                value={formData.tipo_comissao}
+                onValueChange={(value: TipoComissao) =>
+                  setFormData({ ...formData, tipo_comissao: value })
                 }
               >
                 <SelectTrigger>
@@ -200,7 +206,7 @@ export default function Colaboradores() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="valorComissao">
-                {formData.tipoComissao === 'percentual'
+                {formData.tipo_comissao === 'percentual'
                   ? 'Percentual da Comissão (%)'
                   : 'Valor Fixo (R$)'}
               </Label>
@@ -208,10 +214,10 @@ export default function Colaboradores() {
                 id="valorComissao"
                 type="number"
                 min="0"
-                step={formData.tipoComissao === 'percentual' ? '1' : '0.01'}
-                value={formData.valorComissao}
+                step={formData.tipo_comissao === 'percentual' ? '1' : '0.01'}
+                value={formData.valor_comissao}
                 onChange={(e) =>
-                  setFormData({ ...formData, valorComissao: parseFloat(e.target.value) || 0 })
+                  setFormData({ ...formData, valor_comissao: parseFloat(e.target.value) || 0 })
                 }
               />
             </div>

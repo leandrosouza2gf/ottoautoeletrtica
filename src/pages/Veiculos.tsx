@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useStore } from '@/store/useStore';
+import { useVeiculos, type Veiculo } from '@/hooks/useVeiculos';
+import { useClientes } from '@/hooks/useClientes';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,20 +20,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Car, Pencil, Trash2, Search } from 'lucide-react';
-import type { Veiculo } from '@/types';
+import { Car, Pencil, Trash2, Search, Loader2 } from 'lucide-react';
 
 export default function Veiculos() {
-  const { veiculos, clientes, addVeiculo, updateVeiculo, deleteVeiculo } = useStore();
+  const { veiculos, isLoading: isLoadingVeiculos, addVeiculo, updateVeiculo, deleteVeiculo } = useVeiculos();
+  const { clientes, isLoading: isLoadingClientes } = useClientes();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingVeiculo, setEditingVeiculo] = useState<Veiculo | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({
-    clienteId: '',
+    cliente_id: '',
     placa: '',
     modelo: '',
     ano: '',
-    problemaInformado: '',
+    problema_informado: '',
   });
 
   const filteredVeiculos = veiculos.filter(
@@ -50,15 +51,15 @@ export default function Veiculos() {
     if (veiculo) {
       setEditingVeiculo(veiculo);
       setFormData({
-        clienteId: veiculo.clienteId,
+        cliente_id: veiculo.cliente_id,
         placa: veiculo.placa,
         modelo: veiculo.modelo,
-        ano: veiculo.ano,
-        problemaInformado: veiculo.problemaInformado || '',
+        ano: veiculo.ano || '',
+        problema_informado: veiculo.problema_informado || '',
       });
     } else {
       setEditingVeiculo(null);
-      setFormData({ clienteId: '', placa: '', modelo: '', ano: '', problemaInformado: '' });
+      setFormData({ cliente_id: '', placa: '', modelo: '', ano: '', problema_informado: '' });
     }
     setIsDialogOpen(true);
   };
@@ -66,16 +67,12 @@ export default function Veiculos() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingVeiculo) {
-      updateVeiculo(editingVeiculo.id, formData);
+      updateVeiculo({ id: editingVeiculo.id, ...formData });
     } else {
-      addVeiculo({
-        id: crypto.randomUUID(),
-        ...formData,
-        createdAt: new Date(),
-      });
+      addVeiculo(formData);
     }
     setIsDialogOpen(false);
-    setFormData({ clienteId: '', placa: '', modelo: '', ano: '', problemaInformado: '' });
+    setFormData({ cliente_id: '', placa: '', modelo: '', ano: '', problema_informado: '' });
   };
 
   const handleDelete = (id: string) => {
@@ -83,6 +80,14 @@ export default function Veiculos() {
       deleteVeiculo(id);
     }
   };
+
+  if (isLoadingVeiculos || isLoadingClientes) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -151,10 +156,10 @@ export default function Veiculos() {
                 </div>
                 <div className="text-sm text-muted-foreground space-y-1">
                   <p><strong>Modelo:</strong> {veiculo.modelo}</p>
-                  <p><strong>Ano:</strong> {veiculo.ano}</p>
-                  <p><strong>Proprietário:</strong> {getClienteNome(veiculo.clienteId)}</p>
-                  {veiculo.problemaInformado && (
-                    <p><strong>Problema:</strong> {veiculo.problemaInformado}</p>
+                  <p><strong>Ano:</strong> {veiculo.ano || 'N/A'}</p>
+                  <p><strong>Proprietário:</strong> {getClienteNome(veiculo.cliente_id)}</p>
+                  {veiculo.problema_informado && (
+                    <p><strong>Problema:</strong> {veiculo.problema_informado}</p>
                   )}
                 </div>
               </CardContent>
@@ -175,9 +180,9 @@ export default function Veiculos() {
             <div className="space-y-2">
               <Label htmlFor="clienteId">Proprietário *</Label>
               <Select
-                value={formData.clienteId}
+                value={formData.cliente_id}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, clienteId: value })
+                  setFormData({ ...formData, cliente_id: value })
                 }
               >
                 <SelectTrigger>
@@ -231,9 +236,9 @@ export default function Veiculos() {
               <Label htmlFor="problemaInformado">Problema Informado</Label>
               <Input
                 id="problemaInformado"
-                value={formData.problemaInformado}
+                value={formData.problema_informado}
                 onChange={(e) =>
-                  setFormData({ ...formData, problemaInformado: e.target.value })
+                  setFormData({ ...formData, problema_informado: e.target.value })
                 }
                 placeholder="Descreva o problema relatado pelo cliente"
               />
