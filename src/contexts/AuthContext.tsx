@@ -34,7 +34,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
-        .single();
+        .order('role', { ascending: true }) // 'admin' vem antes de 'user' alfabeticamente
+        .limit(1)
+        .maybeSingle();
 
       if (error) {
         // Only log detailed errors in development to prevent info leakage
