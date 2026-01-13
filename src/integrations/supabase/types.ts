@@ -61,6 +61,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bootstrap_first_admin: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -68,7 +69,20 @@ export type Database = {
         }
         Returns: boolean
       }
-      make_user_admin: { Args: { user_email: string }; Returns: undefined }
+      set_user_role_on_create: {
+        Args: {
+          target_role: Database["public"]["Enums"]["app_role"]
+          target_user_id: string
+        }
+        Returns: undefined
+      }
+      update_user_role: {
+        Args: {
+          new_role: Database["public"]["Enums"]["app_role"]
+          target_user_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "user"

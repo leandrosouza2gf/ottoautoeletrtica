@@ -62,7 +62,10 @@ export default function Usuarios() {
 
       setUsers(usersWithRoles);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      // Only log detailed errors in development to prevent info leakage
+      if (import.meta.env.DEV) {
+        console.error('Error fetching users:', error);
+      }
       toast({
         title: "Erro",
         description: "Não foi possível carregar os usuários.",
@@ -106,18 +109,24 @@ export default function Usuarios() {
       if (error) throw error;
 
       if (data.user) {
-        // If role is admin, update the role
+        // If role is admin, use secure RPC function with server-side authorization
         if (formData.role === 'admin') {
-          // First delete the default 'user' role
-          await supabase
-            .from('user_roles')
-            .delete()
-            .eq('user_id', data.user.id);
+          const { error: roleError } = await supabase.rpc('set_user_role_on_create', {
+            target_user_id: data.user.id,
+            target_role: 'admin',
+          });
 
-          // Then insert admin role
-          await supabase
-            .from('user_roles')
-            .insert({ user_id: data.user.id, role: 'admin' });
+          if (roleError) {
+            if (import.meta.env.DEV) {
+              console.error('Error setting role:', roleError);
+            }
+            // User was created but role assignment failed
+            toast({
+              title: "Aviso",
+              description: "Usuário criado, mas não foi possível definir o perfil como Admin.",
+              variant: "destructive",
+            });
+          }
         }
 
         toast({
@@ -142,16 +151,11 @@ export default function Usuarios() {
 
   const handleUpdateRole = async (userId: string, newRole: AppRole) => {
     try {
-      // Delete existing role
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', userId);
-
-      // Insert new role
-      const { error } = await supabase
-        .from('user_roles')
-        .insert({ user_id: userId, role: newRole });
+      // Use secure RPC function with server-side authorization
+      const { error } = await supabase.rpc('update_user_role', {
+        target_user_id: userId,
+        new_role: newRole,
+      });
 
       if (error) throw error;
 
