@@ -1,13 +1,15 @@
 import { useState, useMemo } from 'react';
-import { useStore } from '@/store/useStore';
+import { useFinanceiro } from '@/hooks/useFinanceiro';
+import { useOrdensServico } from '@/hooks/useOrdensServico';
+import { useClientes } from '@/hooks/useClientes';
+import { useVeiculos } from '@/hooks/useVeiculos';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -22,8 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DollarSign, TrendingUp, TrendingDown, Pencil, Trash2 } from 'lucide-react';
-import type { Entrada, Saida, FormaPagamento, StatusPagamento, TipoDespesa } from '@/types';
+import { DollarSign, TrendingUp, TrendingDown, Pencil, Trash2, Loader2 } from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
+
+type FormaPagamento = Database['public']['Enums']['forma_pagamento'];
+type StatusPagamento = Database['public']['Enums']['status_pagamento'];
+type TipoDespesa = Database['public']['Enums']['tipo_despesa'];
 
 const formasPagamento: { value: FormaPagamento; label: string }[] = [
   { value: 'dinheiro', label: 'Dinheiro' },
@@ -41,21 +47,25 @@ const tiposDespesa: { value: TipoDespesa; label: string }[] = [
 
 export default function Financeiro() {
   const { 
-    entradas, saidas, ordensServico, clientes, veiculos,
+    entradas, saidas, isLoading,
     addEntrada, updateEntrada, deleteEntrada,
     addSaida, updateSaida, deleteSaida
-  } = useStore();
+  } = useFinanceiro();
+  
+  const { ordensServico } = useOrdensServico();
+  const { clientes } = useClientes();
+  const { veiculos } = useVeiculos();
 
   const [activeTab, setActiveTab] = useState('entradas');
   const [isEntradaDialogOpen, setIsEntradaDialogOpen] = useState(false);
   const [isSaidaDialogOpen, setIsSaidaDialogOpen] = useState(false);
-  const [editingEntrada, setEditingEntrada] = useState<Entrada | null>(null);
-  const [editingSaida, setEditingSaida] = useState<Saida | null>(null);
+  const [editingEntrada, setEditingEntrada] = useState<typeof entradas[0] | null>(null);
+  const [editingSaida, setEditingSaida] = useState<typeof saidas[0] | null>(null);
 
   const [entradaForm, setEntradaForm] = useState({
-    osId: '',
+    os_id: '',
     valor: 0,
-    formaPagamento: 'pix' as FormaPagamento,
+    forma_pagamento: 'pix' as FormaPagamento,
     data: new Date().toISOString().split('T')[0],
     status: 'recebido' as StatusPagamento,
   });
@@ -63,19 +73,20 @@ export default function Financeiro() {
   const [saidaForm, setSaidaForm] = useState({
     tipo: 'outros' as TipoDespesa,
     valor: 0,
-    formaPagamento: 'pix' as FormaPagamento,
+    forma_pagamento: 'pix' as FormaPagamento,
     data: new Date().toISOString().split('T')[0],
     observacao: '',
   });
 
   const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const formatDate = (date: Date) => new Date(date).toLocaleDateString('pt-BR');
+  const formatDate = (date: string) => new Date(date).toLocaleDateString('pt-BR');
 
-  const getOSInfo = (osId: string) => {
+  const getOSInfo = (osId: string | null) => {
+    if (!osId) return 'N/A';
     const os = ordensServico.find(o => o.id === osId);
     if (!os) return 'N/A';
-    const cliente = clientes.find(c => c.id === os.clienteId);
-    const veiculo = veiculos.find(v => v.id === os.veiculoId);
+    const cliente = clientes.find(c => c.id === os.cliente_id);
+    const veiculo = veiculos.find(v => v.id === os.veiculo_id);
     return `#${osId.slice(0, 6)} - ${cliente?.nome || 'N/A'} - ${veiculo?.placa || 'N/A'}`;
   };
 
@@ -105,22 +116,22 @@ export default function Financeiro() {
     return { totalEntradas, totalSaidas, saldo: totalEntradas - totalSaidas, entradasPendentes };
   }, [entradas, saidas]);
 
-  const handleOpenEntradaDialog = (entrada?: Entrada) => {
+  const handleOpenEntradaDialog = (entrada?: typeof entradas[0]) => {
     if (entrada) {
       setEditingEntrada(entrada);
       setEntradaForm({
-        osId: entrada.osId,
+        os_id: entrada.os_id || '',
         valor: entrada.valor,
-        formaPagamento: entrada.formaPagamento,
-        data: new Date(entrada.data).toISOString().split('T')[0],
+        forma_pagamento: entrada.forma_pagamento,
+        data: entrada.data,
         status: entrada.status,
       });
     } else {
       setEditingEntrada(null);
       setEntradaForm({
-        osId: '',
+        os_id: '',
         valor: 0,
-        formaPagamento: 'pix',
+        forma_pagamento: 'pix',
         data: new Date().toISOString().split('T')[0],
         status: 'recebido',
       });
@@ -128,22 +139,22 @@ export default function Financeiro() {
     setIsEntradaDialogOpen(true);
   };
 
-  const handleOpenSaidaDialog = (saida?: Saida) => {
+  const handleOpenSaidaDialog = (saida?: typeof saidas[0]) => {
     if (saida) {
       setEditingSaida(saida);
       setSaidaForm({
         tipo: saida.tipo,
         valor: saida.valor,
-        formaPagamento: saida.formaPagamento,
-        data: new Date(saida.data).toISOString().split('T')[0],
-        observacao: saida.observacao,
+        forma_pagamento: saida.forma_pagamento,
+        data: saida.data,
+        observacao: saida.observacao || '',
       });
     } else {
       setEditingSaida(null);
       setSaidaForm({
         tipo: 'outros',
         valor: 0,
-        formaPagamento: 'pix',
+        forma_pagamento: 'pix',
         data: new Date().toISOString().split('T')[0],
         observacao: '',
       });
@@ -154,16 +165,16 @@ export default function Financeiro() {
   const handleSubmitEntrada = (e: React.FormEvent) => {
     e.preventDefault();
     const data = {
-      osId: entradaForm.osId,
+      os_id: entradaForm.os_id || null,
       valor: entradaForm.valor,
-      formaPagamento: entradaForm.formaPagamento,
-      data: new Date(entradaForm.data),
+      forma_pagamento: entradaForm.forma_pagamento,
+      data: entradaForm.data,
       status: entradaForm.status,
     };
     if (editingEntrada) {
-      updateEntrada(editingEntrada.id, data);
+      updateEntrada({ id: editingEntrada.id, ...data });
     } else {
-      addEntrada({ id: crypto.randomUUID(), ...data, createdAt: new Date() });
+      addEntrada(data);
     }
     setIsEntradaDialogOpen(false);
   };
@@ -173,14 +184,14 @@ export default function Financeiro() {
     const data = {
       tipo: saidaForm.tipo,
       valor: saidaForm.valor,
-      formaPagamento: saidaForm.formaPagamento,
-      data: new Date(saidaForm.data),
+      forma_pagamento: saidaForm.forma_pagamento,
+      data: saidaForm.data,
       observacao: saidaForm.observacao,
     };
     if (editingSaida) {
-      updateSaida(editingSaida.id, data);
+      updateSaida({ id: editingSaida.id, ...data });
     } else {
-      addSaida({ id: crypto.randomUUID(), ...data, createdAt: new Date() });
+      addSaida(data);
     }
     setIsSaidaDialogOpen(false);
   };
@@ -192,6 +203,14 @@ export default function Financeiro() {
   const handleDeleteSaida = (id: string) => {
     if (confirm('Excluir esta saída?')) deleteSaida(id);
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -305,8 +324,8 @@ export default function Financeiro() {
                       {entradas.map((e) => (
                         <tr key={e.id} className="border-b last:border-0">
                           <td className="py-3 px-2 text-sm">{formatDate(e.data)}</td>
-                          <td className="py-3 px-2 text-sm">{getOSInfo(e.osId)}</td>
-                          <td className="py-3 px-2 text-sm capitalize">{e.formaPagamento}</td>
+                          <td className="py-3 px-2 text-sm">{getOSInfo(e.os_id)}</td>
+                          <td className="py-3 px-2 text-sm capitalize">{e.forma_pagamento}</td>
                           <td className="py-3 px-2"><StatusBadge status={e.status} type="pagamento" /></td>
                           <td className="py-3 px-2 text-right font-medium text-green-600">{formatCurrency(e.valor)}</td>
                           <td className="py-3 px-2 text-right">
@@ -353,7 +372,7 @@ export default function Financeiro() {
                           <td className="py-3 px-2 text-sm">{formatDate(s.data)}</td>
                           <td className="py-3 px-2 text-sm">{tiposDespesa.find(t => t.value === s.tipo)?.label}</td>
                           <td className="py-3 px-2 text-sm text-muted-foreground">{s.observacao || '-'}</td>
-                          <td className="py-3 px-2 text-sm capitalize">{s.formaPagamento}</td>
+                          <td className="py-3 px-2 text-sm capitalize">{s.forma_pagamento}</td>
                           <td className="py-3 px-2 text-right font-medium text-red-600">{formatCurrency(s.valor)}</td>
                           <td className="py-3 px-2 text-right">
                             <Button variant="ghost" size="sm" onClick={() => handleOpenSaidaDialog(s)}>
@@ -383,7 +402,7 @@ export default function Financeiro() {
           <form onSubmit={handleSubmitEntrada} className="space-y-4">
             <div className="space-y-2">
               <Label>OS Vinculada</Label>
-              <Select value={entradaForm.osId} onValueChange={(v) => setEntradaForm({ ...entradaForm, osId: v })}>
+              <Select value={entradaForm.os_id} onValueChange={(v) => setEntradaForm({ ...entradaForm, os_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione a OS" /></SelectTrigger>
                 <SelectContent>
                   {ordensServico.map((os) => (
@@ -417,7 +436,7 @@ export default function Financeiro() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Forma de Pagamento</Label>
-                <Select value={entradaForm.formaPagamento} onValueChange={(v) => setEntradaForm({ ...entradaForm, formaPagamento: v as FormaPagamento })}>
+                <Select value={entradaForm.forma_pagamento} onValueChange={(v) => setEntradaForm({ ...entradaForm, forma_pagamento: v as FormaPagamento })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {formasPagamento.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
@@ -485,7 +504,7 @@ export default function Financeiro() {
             </div>
             <div className="space-y-2">
               <Label>Forma de Pagamento</Label>
-              <Select value={saidaForm.formaPagamento} onValueChange={(v) => setSaidaForm({ ...saidaForm, formaPagamento: v as FormaPagamento })}>
+              <Select value={saidaForm.forma_pagamento} onValueChange={(v) => setSaidaForm({ ...saidaForm, forma_pagamento: v as FormaPagamento })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {formasPagamento.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
@@ -494,9 +513,10 @@ export default function Financeiro() {
             </div>
             <div className="space-y-2">
               <Label>Observação</Label>
-              <Textarea
+              <Input
                 value={saidaForm.observacao}
                 onChange={(e) => setSaidaForm({ ...saidaForm, observacao: e.target.value })}
+                placeholder="Descrição da despesa..."
               />
             </div>
             <div className="flex gap-2 justify-end">

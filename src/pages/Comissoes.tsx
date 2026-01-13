@@ -1,5 +1,9 @@
 import { useState, useMemo } from 'react';
-import { useStore } from '@/store/useStore';
+import { useComissoes } from '@/hooks/useComissoes';
+import { useOrdensServico } from '@/hooks/useOrdensServico';
+import { useColaboradores } from '@/hooks/useColaboradores';
+import { useClientes } from '@/hooks/useClientes';
+import { useVeiculos } from '@/hooks/useVeiculos';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -20,47 +24,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Percent, Pencil, Trash2, CheckCircle } from 'lucide-react';
-import type { Comissao, StatusComissao } from '@/types';
+import { Percent, Pencil, Trash2, CheckCircle, Loader2 } from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
+
+type StatusComissao = Database['public']['Enums']['status_comissao'];
 
 export default function Comissoes() {
-  const { 
-    comissoes, ordensServico, colaboradores, clientes, veiculos,
-    addComissao, updateComissao, deleteComissao 
-  } = useStore();
+  const { comissoes, isLoading: isLoadingComissoes, addComissao, updateComissao, deleteComissao } = useComissoes();
+  const { ordensServico } = useOrdensServico();
+  const { colaboradores } = useColaboradores();
+  const { clientes } = useClientes();
+  const { veiculos } = useVeiculos();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingComissao, setEditingComissao] = useState<Comissao | null>(null);
+  const [editingComissao, setEditingComissao] = useState<typeof comissoes[0] | null>(null);
   const [colaboradorFilter, setColaboradorFilter] = useState<string>('todos');
 
   const [formData, setFormData] = useState({
-    osId: '',
-    colaboradorId: '',
+    os_id: '',
+    colaborador_id: '',
     valor: 0,
     status: 'pendente' as StatusComissao,
   });
 
   const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const formatDate = (date: Date) => new Date(date).toLocaleDateString('pt-BR');
+  const formatDate = (date: string) => new Date(date).toLocaleDateString('pt-BR');
 
-  const getColaboradorNome = (id: string) => colaboradores.find(c => c.id === id)?.nome || 'N/A';
+  const getColaboradorNome = (id: string | null) => colaboradores.find(c => c.id === id)?.nome || 'N/A';
   
-  const getOSInfo = (osId: string) => {
+  const getOSInfo = (osId: string | null) => {
+    if (!osId) return 'N/A';
     const os = ordensServico.find(o => o.id === osId);
     if (!os) return 'N/A';
-    const cliente = clientes.find(c => c.id === os.clienteId);
-    const veiculo = veiculos.find(v => v.id === os.veiculoId);
+    const cliente = clientes.find(c => c.id === os.cliente_id);
+    const veiculo = veiculos.find(v => v.id === os.veiculo_id);
     return `#${osId.slice(0, 6)} - ${cliente?.nome || 'N/A'} - ${veiculo?.placa || 'N/A'}`;
   };
 
   const calcularMaoObraOS = (osId: string) => {
     const os = ordensServico.find(o => o.id === osId);
-    return os?.servicos.reduce((acc, s) => acc + s.valorMaoObra, 0) || 0;
+    return os?.servicos?.reduce((acc, s) => acc + s.valor_mao_obra, 0) || 0;
   };
 
   const filteredComissoes = useMemo(() => {
     if (colaboradorFilter === 'todos') return comissoes;
-    return comissoes.filter(c => c.colaboradorId === colaboradorFilter);
+    return comissoes.filter(c => c.colaborador_id === colaboradorFilter);
   }, [comissoes, colaboradorFilter]);
 
   const stats = useMemo(() => {
@@ -69,7 +77,7 @@ export default function Comissoes() {
     const currentYear = now.getFullYear();
 
     const comissoesMes = comissoes.filter(c => {
-      const d = new Date(c.createdAt);
+      const d = new Date(c.created_at);
       return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
 
@@ -80,18 +88,18 @@ export default function Comissoes() {
     return { totalMes, pendentes, pagas };
   }, [comissoes]);
 
-  const handleOpenDialog = (comissao?: Comissao) => {
+  const handleOpenDialog = (comissao?: typeof comissoes[0]) => {
     if (comissao) {
       setEditingComissao(comissao);
       setFormData({
-        osId: comissao.osId,
-        colaboradorId: comissao.colaboradorId,
+        os_id: comissao.os_id || '',
+        colaborador_id: comissao.colaborador_id || '',
         valor: comissao.valor,
         status: comissao.status,
       });
     } else {
       setEditingComissao(null);
-      setFormData({ osId: '', colaboradorId: '', valor: 0, status: 'pendente' });
+      setFormData({ os_id: '', colaborador_id: '', valor: 0, status: 'pendente' });
     }
     setIsDialogOpen(true);
   };
@@ -99,39 +107,54 @@ export default function Comissoes() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingComissao) {
-      updateComissao(editingComissao.id, formData);
+      updateComissao({
+        id: editingComissao.id,
+        os_id: formData.os_id || null,
+        colaborador_id: formData.colaborador_id || null,
+        valor: formData.valor,
+        status: formData.status,
+      });
     } else {
       addComissao({
-        id: crypto.randomUUID(),
-        ...formData,
-        createdAt: new Date(),
+        os_id: formData.os_id || null,
+        colaborador_id: formData.colaborador_id || null,
+        valor: formData.valor,
+        status: formData.status,
       });
     }
     setIsDialogOpen(false);
   };
 
   const handleCalcComissao = () => {
-    const colaborador = colaboradores.find(c => c.id === formData.colaboradorId);
-    const maoObra = calcularMaoObraOS(formData.osId);
+    const colaborador = colaboradores.find(c => c.id === formData.colaborador_id);
+    const maoObra = calcularMaoObraOS(formData.os_id);
     
     if (colaborador) {
       let valor = 0;
-      if (colaborador.tipoComissao === 'percentual') {
-        valor = (maoObra * colaborador.valorComissao) / 100;
+      if (colaborador.tipo_comissao === 'percentual') {
+        valor = (maoObra * colaborador.valor_comissao) / 100;
       } else {
-        valor = colaborador.valorComissao;
+        valor = colaborador.valor_comissao;
       }
       setFormData({ ...formData, valor });
     }
   };
 
   const handleMarcarPaga = (id: string) => {
-    updateComissao(id, { status: 'paga' });
+    updateComissao({ id, status: 'paga' });
   };
 
   const handleDelete = (id: string) => {
     if (confirm('Excluir esta comissão?')) deleteComissao(id);
   };
+
+  if (isLoadingComissoes) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -213,9 +236,9 @@ export default function Comissoes() {
                 <tbody>
                   {filteredComissoes.map((c) => (
                     <tr key={c.id} className="border-b last:border-0">
-                      <td className="py-3 px-2 text-sm">{formatDate(c.createdAt)}</td>
-                      <td className="py-3 px-2 text-sm font-medium">{getColaboradorNome(c.colaboradorId)}</td>
-                      <td className="py-3 px-2 text-sm text-muted-foreground">{getOSInfo(c.osId)}</td>
+                      <td className="py-3 px-2 text-sm">{formatDate(c.created_at)}</td>
+                      <td className="py-3 px-2 text-sm font-medium">{getColaboradorNome(c.colaborador_id)}</td>
+                      <td className="py-3 px-2 text-sm text-muted-foreground">{getOSInfo(c.os_id)}</td>
                       <td className="py-3 px-2"><StatusBadge status={c.status} type="comissao" /></td>
                       <td className="py-3 px-2 text-right font-bold">{formatCurrency(c.valor)}</td>
                       <td className="py-3 px-2 text-right">
@@ -259,7 +282,7 @@ export default function Comissoes() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label>OS Vinculada *</Label>
-              <Select value={formData.osId} onValueChange={(v) => setFormData({ ...formData, osId: v })}>
+              <Select value={formData.os_id} onValueChange={(v) => setFormData({ ...formData, os_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione a OS" /></SelectTrigger>
                 <SelectContent>
                   {ordensServico.map((os) => (
@@ -267,20 +290,20 @@ export default function Comissoes() {
                   ))}
                 </SelectContent>
               </Select>
-              {formData.osId && (
+              {formData.os_id && (
                 <p className="text-xs text-muted-foreground">
-                  Mão de obra da OS: {formatCurrency(calcularMaoObraOS(formData.osId))}
+                  Mão de obra da OS: {formatCurrency(calcularMaoObraOS(formData.os_id))}
                 </p>
               )}
             </div>
             <div className="space-y-2">
               <Label>Colaborador *</Label>
-              <Select value={formData.colaboradorId} onValueChange={(v) => setFormData({ ...formData, colaboradorId: v })}>
+              <Select value={formData.colaborador_id} onValueChange={(v) => setFormData({ ...formData, colaborador_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione o colaborador" /></SelectTrigger>
                 <SelectContent>
                   {colaboradores.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.nome} ({c.tipoComissao === 'percentual' ? `${c.valorComissao}%` : formatCurrency(c.valorComissao)})
+                      {c.nome} ({c.tipo_comissao === 'percentual' ? `${c.valor_comissao}%` : formatCurrency(c.valor_comissao)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -294,7 +317,7 @@ export default function Comissoes() {
                   variant="link" 
                   size="sm" 
                   onClick={handleCalcComissao}
-                  disabled={!formData.osId || !formData.colaboradorId}
+                  disabled={!formData.os_id || !formData.colaborador_id}
                 >
                   Calcular automaticamente
                 </Button>
