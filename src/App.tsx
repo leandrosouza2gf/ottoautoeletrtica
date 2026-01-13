@@ -4,8 +4,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 // Pages
+import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Clientes from "./pages/Clientes";
 import Veiculos from "./pages/Veiculos";
@@ -15,6 +18,7 @@ import Pecas from "./pages/Pecas";
 import OrdensServico from "./pages/OrdensServico";
 import Financeiro from "./pages/Financeiro";
 import Comissoes from "./pages/Comissoes";
+import Usuarios from "./pages/Usuarios";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,20 +29,115 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <MainLayout>
+        <AuthProvider>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/clientes" element={<Clientes />} />
-            <Route path="/veiculos" element={<Veiculos />} />
-            <Route path="/colaboradores" element={<Colaboradores />} />
-            <Route path="/fornecedores" element={<Fornecedores />} />
-            <Route path="/pecas" element={<Pecas />} />
-            <Route path="/ordens-servico" element={<OrdensServico />} />
-            <Route path="/financeiro" element={<Financeiro />} />
-            <Route path="/comissoes" element={<Comissoes />} />
+            {/* Public route */}
+            <Route path="/auth" element={<Auth />} />
+            
+            {/* Protected routes */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <Dashboard />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/clientes"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <MainLayout>
+                    <Clientes />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/veiculos"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <Veiculos />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/colaboradores"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <MainLayout>
+                    <Colaboradores />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/fornecedores"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <MainLayout>
+                    <Fornecedores />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/pecas"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <MainLayout>
+                    <Pecas />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/ordens-servico"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <OrdensServico />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/financeiro"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <MainLayout>
+                    <Financeiro />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/comissoes"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <MainLayout>
+                    <Comissoes />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/usuarios"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <MainLayout>
+                    <Usuarios />
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </MainLayout>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

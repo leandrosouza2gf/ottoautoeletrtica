@@ -11,26 +11,35 @@ import {
   Percent,
   Menu,
   X,
-  Zap
+  Zap,
+  LogOut,
+  Shield
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 
-const menuItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/clientes', icon: Users, label: 'Clientes' },
-  { to: '/veiculos', icon: Car, label: 'Veículos' },
-  { to: '/colaboradores', icon: UserCog, label: 'Colaboradores' },
-  { to: '/fornecedores', icon: Building2, label: 'Fornecedores' },
-  { to: '/pecas', icon: Wrench, label: 'Peças' },
-  { to: '/ordens-servico', icon: FileText, label: 'Ordens de Serviço' },
-  { to: '/financeiro', icon: DollarSign, label: 'Financeiro' },
-  { to: '/comissoes', icon: Percent, label: 'Comissões' },
+// Menu items with role requirements
+const allMenuItems = [
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard', adminOnly: false },
+  { to: '/clientes', icon: Users, label: 'Clientes', adminOnly: true },
+  { to: '/veiculos', icon: Car, label: 'Veículos', adminOnly: false },
+  { to: '/colaboradores', icon: UserCog, label: 'Colaboradores', adminOnly: true },
+  { to: '/fornecedores', icon: Building2, label: 'Fornecedores', adminOnly: true },
+  { to: '/pecas', icon: Wrench, label: 'Peças', adminOnly: true },
+  { to: '/ordens-servico', icon: FileText, label: 'Ordens de Serviço', adminOnly: false },
+  { to: '/financeiro', icon: DollarSign, label: 'Financeiro', adminOnly: true },
+  { to: '/comissoes', icon: Percent, label: 'Comissões', adminOnly: true },
+  { to: '/usuarios', icon: Shield, label: 'Usuários', adminOnly: true },
 ];
 
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
+  const { isAdmin, signOut, user } = useAuth();
+
+  // Filter menu items based on user role
+  const menuItems = allMenuItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <>
@@ -95,6 +104,27 @@ export function Sidebar() {
               ))}
             </ul>
           </nav>
+
+          {/* User info and logout */}
+          <div className="border-t border-sidebar-border p-4">
+            <div className="mb-3 px-4">
+              <p className="text-xs text-sidebar-foreground/70">Logado como</p>
+              <p className="text-sm font-medium text-sidebar-foreground truncate">
+                {user?.email}
+              </p>
+              <p className="text-xs text-sidebar-foreground/50">
+                {isAdmin ? 'Administrador' : 'Usuário'}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={signOut}
+            >
+              <LogOut className="h-5 w-5 mr-3" />
+              Sair
+            </Button>
+          </div>
         </div>
       </aside>
     </>
