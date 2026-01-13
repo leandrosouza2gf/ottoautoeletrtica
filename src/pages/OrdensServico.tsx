@@ -1,5 +1,9 @@
 import { useState, useMemo } from 'react';
-import { useStore } from '@/store/useStore';
+import { useOrdensServico } from '@/hooks/useOrdensServico';
+import { useClientes } from '@/hooks/useClientes';
+import { useVeiculos } from '@/hooks/useVeiculos';
+import { useColaboradores } from '@/hooks/useColaboradores';
+import { usePecas } from '@/hooks/usePecas';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -22,8 +26,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Search, Eye, Plus, Trash2 } from 'lucide-react';
-import type { OrdemServico, StatusOS, ServicoOS, PecaOS } from '@/types';
+import { FileText, Search, Eye, Plus, Trash2, Loader2 } from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
+
+type StatusOS = Database['public']['Enums']['status_os'];
 
 const statusOptions: { value: StatusOS; label: string }[] = [
   { value: 'aguardando_diagnostico', label: 'Aguardando Diagnóstico' },
@@ -35,30 +41,36 @@ const statusOptions: { value: StatusOS; label: string }[] = [
 
 export default function OrdensServico() {
   const { 
-    ordensServico, clientes, veiculos, colaboradores, pecas,
-    addOS, updateOS, deleteOS 
-  } = useStore();
+    ordensServico, isLoading,
+    addOS, updateOS, deleteOS,
+    addServico, deleteServico,
+    addPecaOS, deletePecaOS
+  } = useOrdensServico();
+  const { clientes } = useClientes();
+  const { veiculos } = useVeiculos();
+  const { colaboradores } = useColaboradores();
+  const { pecas } = usePecas();
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [selectedOS, setSelectedOS] = useState<OrdemServico | null>(null);
+  const [selectedOS, setSelectedOS] = useState<typeof ordensServico[0] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusOS | 'todos'>('todos');
   
   const [formData, setFormData] = useState({
-    clienteId: '',
-    veiculoId: '',
-    defeitoRelatado: '',
+    cliente_id: '',
+    veiculo_id: '',
+    defeito_relatado: '',
   });
 
   // OS Details state
   const [detailsTab, setDetailsTab] = useState('info');
-  const [novoServico, setNovoServico] = useState({ descricao: '', valorMaoObra: 0 });
-  const [novaPeca, setNovaPeca] = useState({ pecaId: '', quantidade: 1, valorUnitario: 0 });
+  const [novoServico, setNovoServico] = useState({ descricao: '', valor_mao_obra: 0 });
+  const [novaPeca, setNovaPeca] = useState({ peca_id: '', quantidade: 1, valor_unitario: 0 });
 
   const filteredOS = useMemo(() => {
     return ordensServico.filter((os) => {
-      const cliente = clientes.find((c) => c.id === os.clienteId);
-      const veiculo = veiculos.find((v) => v.id === os.veiculoId);
+      const cliente = clientes.find((c) => c.id === os.cliente_id);
+      const veiculo = veiculos.find((v) => v.id === os.veiculo_id);
       
       const matchesSearch = 
         os.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -72,43 +84,36 @@ export default function OrdensServico() {
   }, [ordensServico, clientes, veiculos, searchTerm, statusFilter]);
 
   const clienteVeiculos = useMemo(() => {
-    return veiculos.filter((v) => v.clienteId === formData.clienteId);
-  }, [veiculos, formData.clienteId]);
+    return veiculos.filter((v) => v.cliente_id === formData.cliente_id);
+  }, [veiculos, formData.cliente_id]);
 
   const getClienteNome = (clienteId: string) => clientes.find((c) => c.id === clienteId)?.nome || 'N/A';
   const getVeiculoInfo = (veiculoId: string) => {
     const v = veiculos.find((v) => v.id === veiculoId);
     return v ? `${v.modelo} - ${v.placa}` : 'N/A';
   };
-  const getColaboradorNome = (id: string) => colaboradores.find((c) => c.id === id)?.nome || 'N/A';
-  const getPecaNome = (id: string) => pecas.find((p) => p.id === id)?.nome || 'N/A';
+  const getColaboradorNome = (id: string | null) => colaboradores.find((c) => c.id === id)?.nome || 'N/A';
+  const getPecaNome = (id: string | null) => pecas.find((p) => p.id === id)?.nome || 'N/A';
 
   const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const formatDate = (date: Date) => new Date(date).toLocaleDateString('pt-BR');
+  const formatDate = (date: string) => new Date(date).toLocaleDateString('pt-BR');
+
+  const getOSServicos = (osId: string) => ordensServico.find(o => o.id === osId)?.servicos || [];
+  const getOSPecas = (osId: string) => ordensServico.find(o => o.id === osId)?.pecas || [];
 
   const handleCreateOS = (e: React.FormEvent) => {
     e.preventDefault();
-    const newOS: OrdemServico = {
-      id: crypto.randomUUID(),
-      clienteId: formData.clienteId,
-      veiculoId: formData.veiculoId,
-      dataEntrada: new Date(),
-      defeitoRelatado: formData.defeitoRelatado,
-      status: 'aguardando_diagnostico',
-      defeitoIdentificado: '',
-      tecnicoId: '',
-      observacoesTecnicas: '',
-      servicos: [],
-      pecas: [],
-      createdAt: new Date(),
-    };
-    addOS(newOS);
+    addOS({
+      cliente_id: formData.cliente_id,
+      veiculo_id: formData.veiculo_id,
+      defeito_relatado: formData.defeito_relatado,
+    });
     setIsCreateDialogOpen(false);
-    setFormData({ clienteId: '', veiculoId: '', defeitoRelatado: '' });
+    setFormData({ cliente_id: '', veiculo_id: '', defeito_relatado: '' });
   };
 
   const handleUpdateStatus = (osId: string, status: StatusOS) => {
-    updateOS(osId, { status });
+    updateOS({ id: osId, status });
     if (selectedOS?.id === osId) {
       setSelectedOS({ ...selectedOS, status });
     }
@@ -116,56 +121,44 @@ export default function OrdensServico() {
 
   const handleUpdateDiagnostico = (field: string, value: string) => {
     if (!selectedOS) return;
-    const updated = { ...selectedOS, [field]: value };
-    updateOS(selectedOS.id, { [field]: value });
-    setSelectedOS(updated);
+    updateOS({ id: selectedOS.id, [field]: value });
+    setSelectedOS({ ...selectedOS, [field]: value });
   };
 
   const handleAddServico = () => {
     if (!selectedOS || !novoServico.descricao) return;
-    const servico: ServicoOS = {
-      id: crypto.randomUUID(),
+    addServico({
+      ordem_servico_id: selectedOS.id,
       descricao: novoServico.descricao,
-      valorMaoObra: novoServico.valorMaoObra,
-      data: new Date(),
-    };
-    const updated = { ...selectedOS, servicos: [...selectedOS.servicos, servico] };
-    updateOS(selectedOS.id, { servicos: updated.servicos });
-    setSelectedOS(updated);
-    setNovoServico({ descricao: '', valorMaoObra: 0 });
+      valor_mao_obra: novoServico.valor_mao_obra,
+    });
+    setNovoServico({ descricao: '', valor_mao_obra: 0 });
   };
 
   const handleRemoveServico = (servicoId: string) => {
-    if (!selectedOS) return;
-    const updated = { ...selectedOS, servicos: selectedOS.servicos.filter(s => s.id !== servicoId) };
-    updateOS(selectedOS.id, { servicos: updated.servicos });
-    setSelectedOS(updated);
+    deleteServico(servicoId);
   };
 
   const handleAddPeca = () => {
-    if (!selectedOS || !novaPeca.pecaId) return;
-    const peca: PecaOS = {
-      id: crypto.randomUUID(),
-      pecaId: novaPeca.pecaId,
+    if (!selectedOS || !novaPeca.peca_id) return;
+    addPecaOS({
+      ordem_servico_id: selectedOS.id,
+      peca_id: novaPeca.peca_id,
       quantidade: novaPeca.quantidade,
-      valorUnitario: novaPeca.valorUnitario,
-    };
-    const updated = { ...selectedOS, pecas: [...selectedOS.pecas, peca] };
-    updateOS(selectedOS.id, { pecas: updated.pecas });
-    setSelectedOS(updated);
-    setNovaPeca({ pecaId: '', quantidade: 1, valorUnitario: 0 });
+      valor_unitario: novaPeca.valor_unitario,
+    });
+    setNovaPeca({ peca_id: '', quantidade: 1, valor_unitario: 0 });
   };
 
   const handleRemovePeca = (pecaOSId: string) => {
-    if (!selectedOS) return;
-    const updated = { ...selectedOS, pecas: selectedOS.pecas.filter(p => p.id !== pecaOSId) };
-    updateOS(selectedOS.id, { pecas: updated.pecas });
-    setSelectedOS(updated);
+    deletePecaOS(pecaOSId);
   };
 
-  const calcularTotais = (os: OrdemServico) => {
-    const totalPecas = os.pecas.reduce((acc, p) => acc + (p.quantidade * p.valorUnitario), 0);
-    const totalMaoObra = os.servicos.reduce((acc, s) => acc + s.valorMaoObra, 0);
+  const calcularTotais = (osId: string) => {
+    const osServicos = getOSServicos(osId);
+    const osPecas = getOSPecas(osId);
+    const totalPecas = osPecas.reduce((acc, p) => acc + (p.quantidade * p.valor_unitario), 0);
+    const totalMaoObra = osServicos.reduce((acc, s) => acc + s.valor_mao_obra, 0);
     return { totalPecas, totalMaoObra, total: totalPecas + totalMaoObra };
   };
 
@@ -175,6 +168,14 @@ export default function OrdensServico() {
       if (selectedOS?.id === id) setSelectedOS(null);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -225,7 +226,7 @@ export default function OrdensServico() {
       ) : (
         <div className="grid gap-4">
           {filteredOS.map((os) => {
-            const totais = calcularTotais(os);
+            const totais = calcularTotais(os.id);
             return (
               <Card key={os.id}>
                 <CardContent className="pt-6">
@@ -237,15 +238,15 @@ export default function OrdensServico() {
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Cliente</p>
-                        <p className="font-medium">{getClienteNome(os.clienteId)}</p>
+                        <p className="font-medium">{getClienteNome(os.cliente_id)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Veículo</p>
-                        <p className="font-medium">{getVeiculoInfo(os.veiculoId)}</p>
+                        <p className="font-medium">{getVeiculoInfo(os.veiculo_id)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Data Entrada</p>
-                        <p className="font-medium">{formatDate(os.dataEntrada)}</p>
+                        <p className="font-medium">{formatDate(os.data_entrada)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Valor Total</p>
@@ -284,8 +285,8 @@ export default function OrdensServico() {
             <div className="space-y-2">
               <Label>Cliente *</Label>
               <Select 
-                value={formData.clienteId} 
-                onValueChange={(v) => setFormData({ ...formData, clienteId: v, veiculoId: '' })}
+                value={formData.cliente_id} 
+                onValueChange={(v) => setFormData({ ...formData, cliente_id: v, veiculo_id: '' })}
               >
                 <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
                 <SelectContent>
@@ -296,9 +297,9 @@ export default function OrdensServico() {
             <div className="space-y-2">
               <Label>Veículo *</Label>
               <Select 
-                value={formData.veiculoId} 
-                onValueChange={(v) => setFormData({ ...formData, veiculoId: v })}
-                disabled={!formData.clienteId}
+                value={formData.veiculo_id} 
+                onValueChange={(v) => setFormData({ ...formData, veiculo_id: v })}
+                disabled={!formData.cliente_id}
               >
                 <SelectTrigger><SelectValue placeholder="Selecione o veículo" /></SelectTrigger>
                 <SelectContent>
@@ -311,8 +312,8 @@ export default function OrdensServico() {
             <div className="space-y-2">
               <Label>Defeito Relatado pelo Cliente *</Label>
               <Textarea
-                value={formData.defeitoRelatado}
-                onChange={(e) => setFormData({ ...formData, defeitoRelatado: e.target.value })}
+                value={formData.defeito_relatado}
+                onChange={(e) => setFormData({ ...formData, defeito_relatado: e.target.value })}
                 placeholder="Descreva o problema informado pelo cliente..."
                 required
               />
@@ -338,9 +339,9 @@ export default function OrdensServico() {
               </DialogHeader>
               
               <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                <div><span className="text-muted-foreground">Cliente:</span> {getClienteNome(selectedOS.clienteId)}</div>
-                <div><span className="text-muted-foreground">Veículo:</span> {getVeiculoInfo(selectedOS.veiculoId)}</div>
-                <div><span className="text-muted-foreground">Data Entrada:</span> {formatDate(selectedOS.dataEntrada)}</div>
+                <div><span className="text-muted-foreground">Cliente:</span> {getClienteNome(selectedOS.cliente_id)}</div>
+                <div><span className="text-muted-foreground">Veículo:</span> {getVeiculoInfo(selectedOS.veiculo_id)}</div>
+                <div><span className="text-muted-foreground">Data Entrada:</span> {formatDate(selectedOS.data_entrada)}</div>
                 <div>
                   <Label className="text-xs">Status</Label>
                   <Select value={selectedOS.status} onValueChange={(v) => handleUpdateStatus(selectedOS.id, v as StatusOS)}>
@@ -354,7 +355,7 @@ export default function OrdensServico() {
 
               <div className="bg-muted rounded-lg p-3 mb-4">
                 <p className="text-xs text-muted-foreground mb-1">Defeito Relatado</p>
-                <p className="text-sm">{selectedOS.defeitoRelatado}</p>
+                <p className="text-sm">{selectedOS.defeito_relatado}</p>
               </div>
 
               <Tabs value={detailsTab} onValueChange={setDetailsTab}>
@@ -368,8 +369,8 @@ export default function OrdensServico() {
                   <div className="space-y-2">
                     <Label>Técnico Responsável</Label>
                     <Select 
-                      value={selectedOS.tecnicoId} 
-                      onValueChange={(v) => handleUpdateDiagnostico('tecnicoId', v)}
+                      value={selectedOS.tecnico_id || ''} 
+                      onValueChange={(v) => handleUpdateDiagnostico('tecnico_id', v)}
                     >
                       <SelectTrigger><SelectValue placeholder="Selecione o técnico" /></SelectTrigger>
                       <SelectContent>
@@ -380,16 +381,16 @@ export default function OrdensServico() {
                   <div className="space-y-2">
                     <Label>Defeito Identificado</Label>
                     <Textarea
-                      value={selectedOS.defeitoIdentificado}
-                      onChange={(e) => handleUpdateDiagnostico('defeitoIdentificado', e.target.value)}
+                      value={selectedOS.defeito_identificado || ''}
+                      onChange={(e) => handleUpdateDiagnostico('defeito_identificado', e.target.value)}
                       placeholder="Descreva o defeito encontrado..."
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Observações Técnicas</Label>
                     <Textarea
-                      value={selectedOS.observacoesTecnicas}
-                      onChange={(e) => handleUpdateDiagnostico('observacoesTecnicas', e.target.value)}
+                      value={selectedOS.observacoes_tecnicas || ''}
+                      onChange={(e) => handleUpdateDiagnostico('observacoes_tecnicas', e.target.value)}
                       placeholder="Observações adicionais..."
                     />
                   </div>
@@ -410,8 +411,8 @@ export default function OrdensServico() {
                       <Input
                         type="number"
                         placeholder="Valor"
-                        value={novoServico.valorMaoObra || ''}
-                        onChange={(e) => setNovoServico({ ...novoServico, valorMaoObra: parseFloat(e.target.value) || 0 })}
+                        value={novoServico.valor_mao_obra || ''}
+                        onChange={(e) => setNovoServico({ ...novoServico, valor_mao_obra: parseFloat(e.target.value) || 0 })}
                         className="w-28"
                       />
                       <Button type="button" size="sm" onClick={handleAddServico}>
@@ -420,20 +421,18 @@ export default function OrdensServico() {
                     </CardContent>
                   </Card>
                   
-                  {selectedOS.servicos.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum serviço registrado</p>
-                  ) : (
+                  {getOSServicos(selectedOS.id).length > 0 && (
                     <div className="space-y-2">
-                      {selectedOS.servicos.map((s) => (
-                        <div key={s.id} className="flex items-center justify-between bg-muted rounded-lg p-3">
+                      {getOSServicos(selectedOS.id).map((s) => (
+                        <div key={s.id} className="flex items-center justify-between p-3 border rounded-lg">
                           <div>
                             <p className="font-medium">{s.descricao}</p>
                             <p className="text-xs text-muted-foreground">{formatDate(s.data)}</p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold">{formatCurrency(s.valorMaoObra)}</span>
-                            <Button variant="ghost" size="sm" onClick={() => handleRemoveServico(s.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold">{formatCurrency(s.valor_mao_obra)}</span>
+                            <Button variant="ghost" size="sm" onClick={() => handleRemoveServico(s.id)} className="text-destructive">
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
@@ -447,12 +446,12 @@ export default function OrdensServico() {
                     <CardHeader className="py-3">
                       <CardTitle className="text-sm">Adicionar Peça</CardTitle>
                     </CardHeader>
-                    <CardContent className="flex gap-2 flex-wrap">
-                      <Select value={novaPeca.pecaId} onValueChange={(v) => {
+                    <CardContent className="flex gap-2">
+                      <Select value={novaPeca.peca_id} onValueChange={(v) => {
                         const peca = pecas.find(p => p.id === v);
-                        setNovaPeca({ ...novaPeca, pecaId: v, valorUnitario: peca?.valorCusto || 0 });
+                        setNovaPeca({ ...novaPeca, peca_id: v, valor_unitario: peca?.valor_custo || 0 });
                       }}>
-                        <SelectTrigger className="flex-1 min-w-[150px]"><SelectValue placeholder="Selecione a peça" /></SelectTrigger>
+                        <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione a peça" /></SelectTrigger>
                         <SelectContent>
                           {pecas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                         </SelectContent>
@@ -460,16 +459,16 @@ export default function OrdensServico() {
                       <Input
                         type="number"
                         placeholder="Qtd"
-                        min="1"
-                        value={novaPeca.quantidade}
+                        value={novaPeca.quantidade || ''}
                         onChange={(e) => setNovaPeca({ ...novaPeca, quantidade: parseInt(e.target.value) || 1 })}
                         className="w-20"
+                        min={1}
                       />
                       <Input
                         type="number"
                         placeholder="Valor Unit."
-                        value={novaPeca.valorUnitario || ''}
-                        onChange={(e) => setNovaPeca({ ...novaPeca, valorUnitario: parseFloat(e.target.value) || 0 })}
+                        value={novaPeca.valor_unitario || ''}
+                        onChange={(e) => setNovaPeca({ ...novaPeca, valor_unitario: parseFloat(e.target.value) || 0 })}
                         className="w-28"
                       />
                       <Button type="button" size="sm" onClick={handleAddPeca}>
@@ -478,22 +477,18 @@ export default function OrdensServico() {
                     </CardContent>
                   </Card>
 
-                  {selectedOS.pecas.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">Nenhuma peça registrada</p>
-                  ) : (
+                  {getOSPecas(selectedOS.id).length > 0 && (
                     <div className="space-y-2">
-                      {selectedOS.pecas.map((p) => (
-                        <div key={p.id} className="flex items-center justify-between bg-muted rounded-lg p-3">
+                      {getOSPecas(selectedOS.id).map((p) => (
+                        <div key={p.id} className="flex items-center justify-between p-3 border rounded-lg">
                           <div>
-                            <p className="font-medium">{getPecaNome(p.pecaId)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {p.quantidade}x {formatCurrency(p.valorUnitario)}
-                            </p>
+                            <p className="font-medium">{getPecaNome(p.peca_id)}</p>
+                            <p className="text-xs text-muted-foreground">{p.quantidade}x {formatCurrency(p.valor_unitario)}</p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold">{formatCurrency(p.quantidade * p.valorUnitario)}</span>
-                            <Button variant="ghost" size="sm" onClick={() => handleRemovePeca(p.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold">{formatCurrency(p.quantidade * p.valor_unitario)}</span>
+                            <Button variant="ghost" size="sm" onClick={() => handleRemovePeca(p.id)} className="text-destructive">
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
@@ -504,18 +499,20 @@ export default function OrdensServico() {
               </Tabs>
 
               {/* Totals */}
-              <div className="border-t pt-4 mt-4">
-                <div className="flex justify-between text-sm mb-1">
-                  <span>Total Peças:</span>
-                  <span>{formatCurrency(calcularTotais(selectedOS).totalPecas)}</span>
-                </div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span>Total Mão de Obra:</span>
-                  <span>{formatCurrency(calcularTotais(selectedOS).totalMaoObra)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-lg">
-                  <span>TOTAL DA OS:</span>
-                  <span className="text-primary">{formatCurrency(calcularTotais(selectedOS).total)}</span>
+              <div className="mt-6 pt-4 border-t">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Peças</p>
+                    <p className="font-bold">{formatCurrency(calcularTotais(selectedOS.id).totalPecas)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Mão de Obra</p>
+                    <p className="font-bold">{formatCurrency(calcularTotais(selectedOS.id).totalMaoObra)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total OS</p>
+                    <p className="text-xl font-bold text-primary">{formatCurrency(calcularTotais(selectedOS.id).total)}</p>
+                  </div>
                 </div>
               </div>
             </>
