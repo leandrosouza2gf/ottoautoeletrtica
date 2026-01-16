@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, Zap } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Email inválido'),
@@ -205,7 +205,12 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold">Sistema de Gestão</CardTitle>
+          <div className="flex justify-center mb-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary">
+              <Zap className="h-10 w-10 text-primary-foreground" />
+            </div>
+          </div>
+          <CardTitle className="text-2xl font-bold">Otto Auto Elétrica</CardTitle>
           <CardDescription>
             Entre com suas credenciais para acessar o sistema
           </CardDescription>
