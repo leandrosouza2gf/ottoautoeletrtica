@@ -6,6 +6,26 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Função para mascarar placa parcialmente (ex: ABC-1234 -> ABC-**34)
+function maskPlaca(placa: string): string {
+  if (!placa) return '';
+  
+  const cleanPlaca = placa.trim().toUpperCase();
+  
+  if (cleanPlaca.length >= 7) {
+    const inicio = cleanPlaca.substring(0, 3);
+    const final = cleanPlaca.substring(cleanPlaca.length - 2);
+    const meio = '*'.repeat(cleanPlaca.length - 5);
+    
+    if (cleanPlaca.includes('-')) {
+      return `${inicio}-${meio}${final}`;
+    }
+    return `${inicio}${meio}${final}`;
+  }
+  
+  return cleanPlaca;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -90,7 +110,7 @@ serve(async (req) => {
       status_key: os.status,
       veiculo: veiculoRes.data ? {
         modelo: veiculoRes.data.modelo,
-        placa: veiculoRes.data.placa,
+        placa: maskPlaca(veiculoRes.data.placa),
         ano: veiculoRes.data.ano,
       } : null,
       diagnostico: {
