@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams, Link } from 'react-router-dom';
 import { z } from 'zod';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Email inválido'),
@@ -291,6 +291,34 @@ export default function Auth() {
                 </form>
               </DialogContent>
             </Dialog>
+          </div>
+
+          {/* Separador */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                ou
+              </span>
+            </div>
+          </div>
+
+          {/* Seção para Clientes */}
+          <div className="text-center space-y-3">
+            <div>
+              <p className="font-medium text-foreground">É cliente?</p>
+              <p className="text-sm text-muted-foreground">
+                Consulte o status da sua ordem de serviço
+              </p>
+            </div>
+            <Link to="/status-os">
+              <Button variant="outline" className="w-full gap-2">
+                <Search className="h-4 w-4" />
+                Consultar Minha OS
+              </Button>
+            </Link>
           </div>
         </CardContent>
       </Card>
