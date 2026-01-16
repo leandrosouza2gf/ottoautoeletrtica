@@ -26,9 +26,31 @@ export interface PecaOS {
   created_at: string;
 }
 
+export interface OrcamentoOS {
+  id: string;
+  user_id: string;
+  ordem_servico_id: string;
+  valor_total: number;
+  status: 'aguardando' | 'aprovado' | 'reprovado';
+  observacoes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RelatorioAtendimento {
+  id: string;
+  user_id: string;
+  ordem_servico_id: string;
+  funcionario_id: string | null;
+  descricao: string;
+  data: string;
+  created_at: string;
+}
+
 export interface OrdemServico {
   id: string;
   user_id: string;
+  numero_os: number;
   cliente_id: string;
   veiculo_id: string;
   tecnico_id: string | null;
@@ -41,10 +63,12 @@ export interface OrdemServico {
   updated_at: string;
   servicos?: ServicoOS[];
   pecas?: PecaOS[];
+  orcamento?: OrcamentoOS | null;
+  relatorios?: RelatorioAtendimento[];
 }
 
 export type OrdemServicoInsert = Pick<OrdemServico, 'cliente_id' | 'veiculo_id' | 'defeito_relatado'>;
-export type OrdemServicoUpdate = Partial<Omit<OrdemServico, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'servicos' | 'pecas'>>;
+export type OrdemServicoUpdate = Partial<Omit<OrdemServico, 'id' | 'user_id' | 'numero_os' | 'created_at' | 'updated_at' | 'servicos' | 'pecas' | 'orcamento' | 'relatorios'>>;
 
 export function useOrdensServico() {
   const { user } = useAuth();
@@ -62,18 +86,22 @@ export function useOrdensServico() {
       
       if (ordensError) throw ordensError;
       
-      // Fetch services and parts for each order
+      // Fetch services, parts, orcamentos, and relatorios for each order
       const ordensWithDetails = await Promise.all(
         (ordens || []).map(async (os) => {
-          const [servicosRes, pecasRes] = await Promise.all([
+          const [servicosRes, pecasRes, orcamentoRes, relatoriosRes] = await Promise.all([
             supabase.from('servicos_os').select('*').eq('ordem_servico_id', os.id),
             supabase.from('pecas_os').select('*').eq('ordem_servico_id', os.id),
+            supabase.from('orcamentos_os').select('*').eq('ordem_servico_id', os.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+            supabase.from('relatorios_atendimento').select('*').eq('ordem_servico_id', os.id).order('data', { ascending: false }),
           ]);
           
           return {
             ...os,
             servicos: servicosRes.data || [],
             pecas: pecasRes.data || [],
+            orcamento: orcamentoRes.data || null,
+            relatorios: relatoriosRes.data || [],
           };
         })
       );
@@ -230,6 +258,101 @@ export function useOrdensServico() {
     },
   });
 
+  // Orcamento CRUD
+  const addOrcamento = useMutation({
+    mutationFn: async (orcamento: { ordem_servico_id: string; valor_total: number; status?: string; observacoes?: string }) => {
+      if (!user) throw new Error('User not authenticated');
+      const { data, error } = await supabase
+        .from('orcamentos_os')
+        .insert({ 
+          ...orcamento, 
+          user_id: user.id,
+          status: orcamento.status || 'aguardando',
+          observacoes: orcamento.observacoes || '',
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ordensServico'] });
+      toast.success('Orçamento criado com sucesso!');
+    },
+    onError: (error) => {
+      if (import.meta.env.DEV) console.error('Error adding orcamento:', error);
+      toast.error('Erro ao criar orçamento');
+    },
+  });
+
+  const updateOrcamento = useMutation({
+    mutationFn: async ({ id, ...orcamento }: { id: string; valor_total?: number; status?: string; observacoes?: string }) => {
+      const { data, error } = await supabase
+        .from('orcamentos_os')
+        .update(orcamento)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ordensServico'] });
+      toast.success('Orçamento atualizado!');
+    },
+    onError: (error) => {
+      if (import.meta.env.DEV) console.error('Error updating orcamento:', error);
+      toast.error('Erro ao atualizar orçamento');
+    },
+  });
+
+  // Relatorio CRUD
+  const addRelatorio = useMutation({
+    mutationFn: async (relatorio: { ordem_servico_id: string; funcionario_id?: string | null; descricao: string }) => {
+      if (!user) throw new Error('User not authenticated');
+      const { data, error } = await supabase
+        .from('relatorios_atendimento')
+        .insert({ 
+          ...relatorio, 
+          user_id: user.id,
+          funcionario_id: relatorio.funcionario_id || null,
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ordensServico'] });
+      toast.success('Relatório adicionado!');
+    },
+    onError: (error) => {
+      if (import.meta.env.DEV) console.error('Error adding relatorio:', error);
+      toast.error('Erro ao adicionar relatório');
+    },
+  });
+
+  const deleteRelatorio = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('relatorios_atendimento')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ordensServico'] });
+    },
+    onError: (error) => {
+      if (import.meta.env.DEV) console.error('Error deleting relatorio:', error);
+      toast.error('Erro ao remover relatório');
+    },
+  });
+
   return {
     ordensServico,
     isLoading,
@@ -241,6 +364,10 @@ export function useOrdensServico() {
     deleteServico: deleteServico.mutate,
     addPecaOS: addPecaOS.mutate,
     deletePecaOS: deletePecaOS.mutate,
+    addOrcamento: addOrcamento.mutate,
+    updateOrcamento: updateOrcamento.mutate,
+    addRelatorio: addRelatorio.mutate,
+    deleteRelatorio: deleteRelatorio.mutate,
     isAdding: addOS.isPending,
     isUpdating: updateOS.isPending,
     isDeleting: deleteOS.isPending,

@@ -202,6 +202,47 @@ export type Database = {
         }
         Relationships: []
       }
+      orcamentos_os: {
+        Row: {
+          created_at: string
+          id: string
+          observacoes: string | null
+          ordem_servico_id: string
+          status: string
+          updated_at: string
+          user_id: string
+          valor_total: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          observacoes?: string | null
+          ordem_servico_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          valor_total?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          observacoes?: string | null
+          ordem_servico_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          valor_total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orcamentos_os_ordem_servico_id_fkey"
+            columns: ["ordem_servico_id"]
+            isOneToOne: false
+            referencedRelation: "ordens_servico"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ordens_servico: {
         Row: {
           cliente_id: string
@@ -210,6 +251,7 @@ export type Database = {
           defeito_identificado: string | null
           defeito_relatado: string
           id: string
+          numero_os: number
           observacoes_tecnicas: string | null
           status: Database["public"]["Enums"]["status_os"]
           tecnico_id: string | null
@@ -224,6 +266,7 @@ export type Database = {
           defeito_identificado?: string | null
           defeito_relatado?: string
           id?: string
+          numero_os?: number
           observacoes_tecnicas?: string | null
           status?: Database["public"]["Enums"]["status_os"]
           tecnico_id?: string | null
@@ -238,6 +281,7 @@ export type Database = {
           defeito_identificado?: string | null
           defeito_relatado?: string
           id?: string
+          numero_os?: number
           observacoes_tecnicas?: string | null
           status?: Database["public"]["Enums"]["status_os"]
           tecnico_id?: string | null
@@ -375,6 +419,51 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      relatorios_atendimento: {
+        Row: {
+          created_at: string
+          data: string
+          descricao: string
+          funcionario_id: string | null
+          id: string
+          ordem_servico_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          data?: string
+          descricao: string
+          funcionario_id?: string | null
+          id?: string
+          ordem_servico_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data?: string
+          descricao?: string
+          funcionario_id?: string | null
+          id?: string
+          ordem_servico_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "relatorios_atendimento_funcionario_id_fkey"
+            columns: ["funcionario_id"]
+            isOneToOne: false
+            referencedRelation: "colaboradores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "relatorios_atendimento_ordem_servico_id_fkey"
+            columns: ["ordem_servico_id"]
+            isOneToOne: false
+            referencedRelation: "ordens_servico"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       saidas: {
         Row: {

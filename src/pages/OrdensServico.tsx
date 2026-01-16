@@ -4,6 +4,7 @@ import { useClientes } from '@/hooks/useClientes';
 import { useVeiculos } from '@/hooks/useVeiculos';
 import { useColaboradores } from '@/hooks/useColaboradores';
 import { usePecas } from '@/hooks/usePecas';
+import { useAuth } from '@/contexts/AuthContext';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +28,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Search, Eye, Plus, Trash2, Loader2 } from 'lucide-react';
+import { FileText, Search, Eye, Plus, Trash2, Loader2, ClipboardList, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Database } from '@/integrations/supabase/types';
 
 type StatusOS = Database['public']['Enums']['status_os'];
@@ -39,12 +42,27 @@ const statusOptions: { value: StatusOS; label: string }[] = [
   { value: 'entregue', label: 'Entregue' },
 ];
 
+const orcamentoStatusOptions = [
+  { value: 'aguardando', label: 'Aguardando Aprovação' },
+  { value: 'aprovado', label: 'Aprovado' },
+  { value: 'reprovado', label: 'Reprovado' },
+];
+
+const orcamentoStatusColors: Record<string, string> = {
+  aguardando: 'bg-yellow-500',
+  aprovado: 'bg-green-500',
+  reprovado: 'bg-red-500',
+};
+
 export default function OrdensServico() {
+  const { isAdmin } = useAuth();
   const { 
     ordensServico, isLoading,
     addOS, updateOS, deleteOS,
     addServico, deleteServico,
-    addPecaOS, deletePecaOS
+    addPecaOS, deletePecaOS,
+    addOrcamento, updateOrcamento,
+    addRelatorio, deleteRelatorio
   } = useOrdensServico();
   const { clientes } = useClientes();
   const { veiculos } = useVeiculos();
@@ -66,6 +84,8 @@ export default function OrdensServico() {
   const [detailsTab, setDetailsTab] = useState('info');
   const [novoServico, setNovoServico] = useState({ descricao: '', valor_mao_obra: 0 });
   const [novaPeca, setNovaPeca] = useState({ peca_id: '', quantidade: 1, valor_unitario: 0 });
+  const [novoRelatorio, setNovoRelatorio] = useState({ descricao: '', funcionario_id: '' });
+  const [orcamentoForm, setOrcamentoForm] = useState({ observacoes: '' });
 
   const filteredOS = useMemo(() => {
     return ordensServico.filter((os) => {
@@ -73,6 +93,7 @@ export default function OrdensServico() {
       const veiculo = veiculos.find((v) => v.id === os.veiculo_id);
       
       const matchesSearch = 
+        os.numero_os?.toString().includes(searchTerm) ||
         os.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         cliente?.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
         veiculo?.placa.toLowerCase().includes(searchTerm.toLowerCase());
@@ -97,9 +118,14 @@ export default function OrdensServico() {
 
   const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const formatDate = (date: string) => new Date(date).toLocaleDateString('pt-BR');
+  const formatDateTime = (date: string) => new Date(date).toLocaleDateString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
 
   const getOSServicos = (osId: string) => ordensServico.find(o => o.id === osId)?.servicos || [];
   const getOSPecas = (osId: string) => ordensServico.find(o => o.id === osId)?.pecas || [];
+  const getOSOrcamento = (osId: string) => ordensServico.find(o => o.id === osId)?.orcamento || null;
+  const getOSRelatorios = (osId: string) => ordensServico.find(o => o.id === osId)?.relatorios || [];
 
   const handleCreateOS = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,6 +180,20 @@ export default function OrdensServico() {
     deletePecaOS(pecaOSId);
   };
 
+  const handleAddRelatorio = () => {
+    if (!selectedOS || !novoRelatorio.descricao) return;
+    addRelatorio({
+      ordem_servico_id: selectedOS.id,
+      funcionario_id: novoRelatorio.funcionario_id || null,
+      descricao: novoRelatorio.descricao,
+    });
+    setNovoRelatorio({ descricao: '', funcionario_id: '' });
+  };
+
+  const handleRemoveRelatorio = (relatorioId: string) => {
+    deleteRelatorio(relatorioId);
+  };
+
   const calcularTotais = (osId: string) => {
     const osServicos = getOSServicos(osId);
     const osPecas = getOSPecas(osId);
@@ -162,11 +202,37 @@ export default function OrdensServico() {
     return { totalPecas, totalMaoObra, total: totalPecas + totalMaoObra };
   };
 
+  const handleCreateOrcamento = () => {
+    if (!selectedOS) return;
+    const totais = calcularTotais(selectedOS.id);
+    addOrcamento({
+      ordem_servico_id: selectedOS.id,
+      valor_total: totais.total,
+      observacoes: orcamentoForm.observacoes,
+    });
+    setOrcamentoForm({ observacoes: '' });
+  };
+
+  const handleUpdateOrcamentoStatus = (status: string) => {
+    const orcamento = selectedOS ? getOSOrcamento(selectedOS.id) : null;
+    if (!orcamento) return;
+    updateOrcamento({ id: orcamento.id, status });
+  };
+
   const handleDeleteOS = (id: string) => {
+    if (!isAdmin) {
+      toast.error('Apenas administradores podem excluir OS');
+      return;
+    }
     if (confirm('Tem certeza que deseja excluir esta OS?')) {
       deleteOS(id);
       if (selectedOS?.id === id) setSelectedOS(null);
     }
+  };
+
+  const copyNumeroOS = (numeroOS: number) => {
+    navigator.clipboard.writeText(numeroOS.toString());
+    toast.success(`OS #${numeroOS} copiado!`);
   };
 
   if (isLoading) {
@@ -234,7 +300,17 @@ export default function OrdensServico() {
                     <div className="flex-1 grid grid-cols-2 lg:grid-cols-5 gap-4">
                       <div>
                         <p className="text-xs text-muted-foreground">Nº OS</p>
-                        <p className="font-bold">#{os.id.slice(0, 8)}</p>
+                        <div className="flex items-center gap-1">
+                          <p className="font-bold text-lg">#{os.numero_os}</p>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6"
+                            onClick={() => copyNumeroOS(os.numero_os)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Cliente</p>
@@ -258,14 +334,16 @@ export default function OrdensServico() {
                       <Button variant="outline" size="sm" onClick={() => setSelectedOS(os)}>
                         <Eye className="h-4 w-4 mr-1" /> Ver
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => handleDeleteOS(os.id)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {isAdmin && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleDeleteOS(os.id)}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -328,12 +406,22 @@ export default function OrdensServico() {
 
       {/* OS Details Dialog */}
       <Dialog open={!!selectedOS} onOpenChange={(open) => !open && setSelectedOS(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           {selectedOS && (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center justify-between">
-                  <span>OS #{selectedOS.id.slice(0, 8)}</span>
+                  <div className="flex items-center gap-2">
+                    <span>OS #{selectedOS.numero_os}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-6 w-6"
+                      onClick={() => copyNumeroOS(selectedOS.numero_os)}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
                   <StatusBadge status={selectedOS.status} />
                 </DialogTitle>
               </DialogHeader>
@@ -359,10 +447,12 @@ export default function OrdensServico() {
               </div>
 
               <Tabs value={detailsTab} onValueChange={setDetailsTab}>
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="info">Diagnóstico</TabsTrigger>
                   <TabsTrigger value="servicos">Serviços</TabsTrigger>
                   <TabsTrigger value="pecas">Peças</TabsTrigger>
+                  <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
+                  <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="info" className="space-y-4 mt-4">
@@ -493,6 +583,151 @@ export default function OrdensServico() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="orcamento" className="space-y-4 mt-4">
+                  {(() => {
+                    const orcamento = getOSOrcamento(selectedOS.id);
+                    const totais = calcularTotais(selectedOS.id);
+                    
+                    return (
+                      <>
+                        {/* Resumo de valores */}
+                        <Card>
+                          <CardContent className="pt-4">
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                              <div>
+                                <p className="text-xs text-muted-foreground">Peças</p>
+                                <p className="font-bold">{formatCurrency(totais.totalPecas)}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Mão de Obra</p>
+                                <p className="font-bold">{formatCurrency(totais.totalMaoObra)}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Total</p>
+                                <p className="text-xl font-bold text-primary">{formatCurrency(totais.total)}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        {orcamento ? (
+                          <Card>
+                            <CardHeader className="py-3">
+                              <CardTitle className="text-sm flex items-center justify-between">
+                                <span>Orçamento Formalizado</span>
+                                <Badge className={`${orcamentoStatusColors[orcamento.status]} text-white`}>
+                                  {orcamentoStatusOptions.find(o => o.value === orcamento.status)?.label}
+                                </Badge>
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Valor Total:</span>
+                                <span className="text-xl font-bold">{formatCurrency(orcamento.valor_total)}</span>
+                              </div>
+                              {orcamento.observacoes && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground mb-1">Observações:</p>
+                                  <p className="text-sm bg-muted p-2 rounded">{orcamento.observacoes}</p>
+                                </div>
+                              )}
+                              <div className="flex gap-2">
+                                <Label className="text-sm">Alterar Status:</Label>
+                                <Select value={orcamento.status} onValueChange={handleUpdateOrcamentoStatus}>
+                                  <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {orcamentoStatusOptions.map((o) => (
+                                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ) : (
+                          <Card>
+                            <CardHeader className="py-3">
+                              <CardTitle className="text-sm">Formalizar Orçamento</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div className="space-y-2">
+                                <Label>Observações do Orçamento</Label>
+                                <Textarea
+                                  value={orcamentoForm.observacoes}
+                                  onChange={(e) => setOrcamentoForm({ observacoes: e.target.value })}
+                                  placeholder="Condições, prazos, garantias..."
+                                />
+                              </div>
+                              <Button onClick={handleCreateOrcamento} className="w-full">
+                                Criar Orçamento ({formatCurrency(totais.total)})
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </>
+                    );
+                  })()}
+                </TabsContent>
+
+                <TabsContent value="relatorios" className="space-y-4 mt-4">
+                  <Card>
+                    <CardHeader className="py-3">
+                      <CardTitle className="text-sm">Adicionar Relatório de Atendimento</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex gap-2">
+                        <Select 
+                          value={novoRelatorio.funcionario_id} 
+                          onValueChange={(v) => setNovoRelatorio({ ...novoRelatorio, funcionario_id: v })}
+                        >
+                          <SelectTrigger className="w-48">
+                            <SelectValue placeholder="Funcionário" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {colaboradores.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Textarea
+                        value={novoRelatorio.descricao}
+                        onChange={(e) => setNovoRelatorio({ ...novoRelatorio, descricao: e.target.value })}
+                        placeholder="Descreva o serviço executado, peças substituídas, observações..."
+                      />
+                      <Button onClick={handleAddRelatorio} disabled={!novoRelatorio.descricao}>
+                        <Plus className="h-4 w-4 mr-1" /> Adicionar Relatório
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {getOSRelatorios(selectedOS.id).length > 0 ? (
+                    <div className="space-y-3">
+                      {getOSRelatorios(selectedOS.id).map((r) => (
+                        <div key={r.id} className="border-l-2 border-primary pl-4 py-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <ClipboardList className="h-3 w-3" />
+                              <span>{formatDateTime(r.data)}</span>
+                              <span>•</span>
+                              <span>{getColaboradorNome(r.funcionario_id)}</span>
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => handleRemoveRelatorio(r.id)} className="text-destructive h-6">
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <p className="text-sm">{r.descricao}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <ClipboardList className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p>Nenhum relatório registrado</p>
                     </div>
                   )}
                 </TabsContent>
