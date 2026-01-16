@@ -75,7 +75,7 @@ export function Sidebar() {
               <Zap className="h-6 w-6 text-sidebar-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-sidebar-foreground">Oficina Elétrica</h1>
+              <h1 className="text-lg font-bold text-sidebar-foreground">Otto Auto Elétrica</h1>
               <p className="text-xs text-sidebar-foreground/70">Sistema de Gestão</p>
             </div>
           </div>
