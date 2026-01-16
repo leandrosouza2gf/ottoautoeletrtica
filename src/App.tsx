@@ -20,6 +20,7 @@ import Financeiro from "./pages/Financeiro";
 import Comissoes from "./pages/Comissoes";
 import Usuarios from "./pages/Usuarios";
 import NotFound from "./pages/NotFound";
+import StatusOS from "./pages/StatusOS";
 
 const queryClient = new QueryClient();
 
@@ -31,8 +32,9 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            {/* Public route */}
+            {/* Public routes */}
             <Route path="/auth" element={<Auth />} />
+            <Route path="/status-os" element={<StatusOS />} />
             
             {/* Protected routes */}
             <Route
