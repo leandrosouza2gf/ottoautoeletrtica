@@ -1,1 +1,23 @@
 project_id = "nhwqhfzdcryyxcnrfmjp"
+
+# ============================================
+# CONFIGURAÇÃO DE EDGE FUNCTIONS
+# ============================================
+# 
+# FUNÇÕES PÚBLICAS (sem autenticação):
+# - consultar-os-publica: Consulta pública de OS por número
+# - chat-os-ia: Chat IA para consulta de OS
+#
+# FUNÇÕES PROTEGIDAS (requerem autenticação):
+# - Usar authenticateRequest() de _shared/auth.ts
+# - Validar role com requireRole() se necessário
+#
+# IMPORTANTE: Sempre usar verify_jwt = false e validar
+# manualmente com getClaims() para maior controle.
+# ============================================
+
+[functions.consultar-os-publica]
+verify_jwt = false
+
+[functions.chat-os-ia]
+verify_jwt = false
