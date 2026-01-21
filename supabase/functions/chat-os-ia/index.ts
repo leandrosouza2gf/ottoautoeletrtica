@@ -6,14 +6,49 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Rate limiting
+const requestCounts = new Map<string, { count: number; timestamp: number }>();
+const RATE_LIMIT = 5; // requests per minute (more restrictive for AI endpoint)
+const RATE_WINDOW = 60000;
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const record = requestCounts.get(ip);
+  
+  if (!record || (now - record.timestamp) > RATE_WINDOW) {
+    requestCounts.set(ip, { count: 1, timestamp: now });
+    return false;
+  }
+  
+  if (record.count >= RATE_LIMIT) {
+    return true;
+  }
+  
+  record.count++;
+  return false;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Get client IP for rate limiting
+  const clientIP = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                   req.headers.get("cf-connecting-ip") || 
+                   "unknown";
+
+  // Check rate limit
+  if (isRateLimited(clientIP)) {
+    return new Response(
+      JSON.stringify({ error: "Muitas requisições. Aguarde um momento." }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   try {
-    const { numero_os, pergunta } = await req.json();
+    const { numero_os, pergunta, access_token } = await req.json();
 
     if (!numero_os || !pergunta) {
       return new Response(
@@ -22,14 +57,22 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Chat OS IA - OS: ${numero_os}, Pergunta: ${pergunta}`);
+    // Validate pergunta length to prevent abuse
+    if (pergunta.length > 500) {
+      return new Response(
+        JSON.stringify({ error: "Pergunta muito longa. Máximo 500 caracteres." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`Chat OS IA - OS: ${numero_os}`);
 
     // Get API key
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       console.error("LOVABLE_API_KEY não configurada");
       return new Response(
-        JSON.stringify({ error: "Serviço de IA não configurado" }),
+        JSON.stringify({ error: "Serviço temporariamente indisponível" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -39,10 +82,10 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch OS data
+    // Fetch OS data (minimal fields)
     const { data: os, error: osError } = await supabase
       .from("ordens_servico")
-      .select("*")
+      .select("id, numero_os, data_entrada, status, veiculo_id, defeito_relatado, defeito_identificado, observacoes_tecnicas, updated_at, access_token")
       .eq("numero_os", numero_os)
       .maybeSingle();
 
@@ -56,16 +99,17 @@ serve(async (req) => {
       );
     }
 
-    // Fetch related data in parallel
-    const [veiculoRes, servicosRes, pecasOSRes, orcamentoRes, relatoriosRes] = await Promise.all([
-      supabase.from("veiculos").select("modelo, placa, ano").eq("id", os.veiculo_id).maybeSingle(),
-      supabase.from("servicos_os").select("*").eq("ordem_servico_id", os.id).order("data", { ascending: false }),
-      supabase.from("pecas_os").select("*, pecas(nome)").eq("ordem_servico_id", os.id),
-      supabase.from("orcamentos_os").select("*").eq("ordem_servico_id", os.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      supabase.from("relatorios_atendimento").select("*, colaboradores(nome)").eq("ordem_servico_id", os.id).order("data", { ascending: false }),
-    ]);
+    // Validate access token
+    const hasValidToken = access_token && os.access_token === access_token;
 
-    // Prepare OS data summary
+    // Fetch vehicle data only
+    const { data: veiculo } = await supabase
+      .from("veiculos")
+      .select("modelo, ano")
+      .eq("id", os.veiculo_id)
+      .maybeSingle();
+
+    // Prepare minimal OS data summary (no pricing, no employee names)
     const statusLabels: Record<string, string> = {
       aguardando_diagnostico: "Em Diagnóstico",
       em_conserto: "Em Execução",
@@ -74,56 +118,34 @@ serve(async (req) => {
       entregue: "Entregue",
     };
 
-    const orcamentoStatusLabels: Record<string, string> = {
-      aguardando: "Aguardando Aprovação",
-      aprovado: "Aprovado",
-      reprovado: "Reprovado",
-    };
+    // Fetch additional data only if token is valid
+    let servicosDescriptions: string[] = [];
+    let relatoriosDescriptions: string[] = [];
+    let orcamentoStatus = "Não informado";
 
-    const servicos = servicosRes.data || [];
-    const pecasOS = pecasOSRes.data || [];
-    const relatorios = relatoriosRes.data || [];
-    const totalMaoObra = servicos.reduce((acc, s) => acc + Number(s.valor_mao_obra || 0), 0);
-    const totalPecas = pecasOS.reduce((acc, p) => acc + (Number(p.quantidade) * Number(p.valor_unitario)), 0);
+    if (hasValidToken) {
+      const [servicosRes, relatoriosRes, orcamentoRes] = await Promise.all([
+        supabase.from("servicos_os").select("descricao").eq("ordem_servico_id", os.id).order("data", { ascending: false }).limit(5),
+        supabase.from("relatorios_atendimento").select("data, descricao").eq("ordem_servico_id", os.id).order("data", { ascending: false }).limit(3),
+        supabase.from("orcamentos_os").select("status").eq("ordem_servico_id", os.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
 
-    const osData = {
-      numero_os: os.numero_os,
-      status: statusLabels[os.status] || os.status,
-      data_entrada: new Date(os.data_entrada).toLocaleDateString("pt-BR"),
-      veiculo: veiculoRes.data 
-        ? `${veiculoRes.data.modelo} ${veiculoRes.data.ano || ""} - Placa ${veiculoRes.data.placa}` 
-        : "Não informado",
-      defeito_relatado: os.defeito_relatado || "Não informado",
-      defeito_identificado: os.defeito_identificado || "Ainda não identificado",
-      observacoes_tecnicas: os.observacoes_tecnicas || "Nenhuma observação",
-      orcamento: orcamentoRes.data ? {
-        valor: `R$ ${Number(orcamentoRes.data.valor_total).toFixed(2).replace(".", ",")}`,
-        status: orcamentoStatusLabels[orcamentoRes.data.status] || orcamentoRes.data.status,
-        observacoes: orcamentoRes.data.observacoes || "Sem observações",
-      } : {
-        valor: `R$ ${(totalMaoObra + totalPecas).toFixed(2).replace(".", ",")}`,
-        status: "Não formalizado",
-        observacoes: null,
-      },
-      servicos: servicos.map((s) => ({
-        descricao: s.descricao,
-        valor: `R$ ${Number(s.valor_mao_obra).toFixed(2).replace(".", ",")}`,
-      })),
-      pecas: pecasOS.map((p) => ({
-        nome: p.pecas?.nome || "Peça",
-        quantidade: p.quantidade,
-        valor: `R$ ${(Number(p.quantidade) * Number(p.valor_unitario)).toFixed(2).replace(".", ",")}`,
-      })),
-      relatorios: relatorios.slice(0, 5).map((r) => ({
-        data: new Date(r.data).toLocaleDateString("pt-BR"),
-        funcionario: r.colaboradores?.nome || "Técnico",
-        descricao: r.descricao,
-      })),
-      ultima_atualizacao: new Date(os.updated_at).toLocaleDateString("pt-BR"),
-      valor_total: `R$ ${(totalMaoObra + totalPecas).toFixed(2).replace(".", ",")}`,
-    };
+      servicosDescriptions = (servicosRes.data || []).map(s => s.descricao);
+      relatoriosDescriptions = (relatoriosRes.data || []).map(r => 
+        `${new Date(r.data).toLocaleDateString("pt-BR")}: ${r.descricao}`
+      );
+      
+      const orcamentoStatusLabels: Record<string, string> = {
+        aguardando: "Aguardando Aprovação",
+        aprovado: "Aprovado",
+        reprovado: "Reprovado",
+      };
+      orcamentoStatus = orcamentoRes.data 
+        ? orcamentoStatusLabels[orcamentoRes.data.status] || orcamentoRes.data.status
+        : "Não formalizado";
+    }
 
-    // Create system prompt
+    // Create system prompt (no pricing data, no employee names)
     const systemPrompt = `Você é um assistente virtual profissional da oficina elétrica automotiva.
 Sua ÚNICA função é responder perguntas sobre o status de ordens de serviço.
 
@@ -131,43 +153,33 @@ REGRAS ABSOLUTAS:
 1. Responda APENAS com base nos dados fornecidos abaixo
 2. NÃO invente informações que não estejam nos dados
 3. NÃO sugira diagnósticos, reparos ou soluções técnicas
-4. NÃO informe valores que não estejam registrados
+4. NÃO informe valores ou preços - diga que essa informação não está disponível
 5. NÃO dê opiniões sobre procedimentos técnicos
 6. Use linguagem profissional, clara e objetiva
 7. Foque em status, transparência e informações já cadastradas
-8. Se não tiver a informação solicitada, diga que não está disponível no sistema
+8. Se não tiver a informação solicitada, diga que não está disponível
 9. Sempre cite o número da OS na resposta
-10. Formate valores monetários em Reais (R$)
 
-DADOS DA ORDEM DE SERVIÇO Nº ${osData.numero_os}:
-- Status atual: ${osData.status}
-- Data de entrada: ${osData.data_entrada}
-- Veículo: ${osData.veiculo}
-- Defeito relatado pelo cliente: ${osData.defeito_relatado}
-- Defeito identificado pelo técnico: ${osData.defeito_identificado}
-- Observações técnicas: ${osData.observacoes_tecnicas}
-- Valor total estimado: ${osData.valor_total}
-- Última atualização: ${osData.ultima_atualizacao}
-
+DADOS DA ORDEM DE SERVIÇO Nº ${os.numero_os}:
+- Status atual: ${statusLabels[os.status] || os.status}
+- Data de entrada: ${new Date(os.data_entrada).toLocaleDateString("pt-BR")}
+- Veículo: ${veiculo ? `${veiculo.modelo} ${veiculo.ano || ""}` : "Não informado"}
+- Defeito relatado pelo cliente: ${os.defeito_relatado || "Não informado"}
+${hasValidToken ? `- Defeito identificado pelo técnico: ${os.defeito_identificado || "Ainda não identificado"}
+- Observações técnicas: ${os.observacoes_tecnicas || "Nenhuma observação"}` : ""}
+- Última atualização: ${new Date(os.updated_at).toLocaleDateString("pt-BR")}
+${hasValidToken && orcamentoStatus ? `
 ORÇAMENTO:
-- Valor: ${osData.orcamento.valor}
-- Status: ${osData.orcamento.status}
-${osData.orcamento.observacoes ? `- Observações: ${osData.orcamento.observacoes}` : ""}
+- Status: ${orcamentoStatus}
+- Nota: Valores não são exibidos por segurança` : ""}
+${hasValidToken && servicosDescriptions.length > 0 ? `
+SERVIÇOS EM ANDAMENTO:
+${servicosDescriptions.map(s => `- ${s}`).join("\n")}` : ""}
+${hasValidToken && relatoriosDescriptions.length > 0 ? `
+ÚLTIMAS ATUALIZAÇÕES:
+${relatoriosDescriptions.map(r => `- ${r}`).join("\n")}` : ""}
 
-SERVIÇOS REALIZADOS/PREVISTOS (${osData.servicos.length}):
-${osData.servicos.length > 0 
-  ? osData.servicos.map((s) => `- ${s.descricao}: ${s.valor}`).join("\n") 
-  : "- Nenhum serviço registrado ainda"}
-
-PEÇAS (${osData.pecas.length}):
-${osData.pecas.length > 0 
-  ? osData.pecas.map((p) => `- ${p.nome} (${p.quantidade}x): ${p.valor}`).join("\n") 
-  : "- Nenhuma peça registrada ainda"}
-
-ÚLTIMOS RELATÓRIOS DE ATENDIMENTO:
-${osData.relatorios.length > 0 
-  ? osData.relatorios.map((r) => `- ${r.data} (${r.funcionario}): ${r.descricao}`).join("\n") 
-  : "- Nenhum relatório de atendimento registrado ainda"}
+IMPORTANTE: Valores financeiros não estão disponíveis para consulta pública. Para informações sobre preços, o cliente deve entrar em contato diretamente com a oficina.
 
 Responda à pergunta do cliente de forma clara, profissional e baseada APENAS nos dados acima.`;
 
@@ -197,28 +209,20 @@ Responda à pergunta do cliente de forma clara, profissional e baseada APENAS no
       
       if (status === 429) {
         return new Response(
-          JSON.stringify({ error: "Muitas solicitações. Por favor, aguarde alguns segundos e tente novamente." }),
+          JSON.stringify({ error: "Muitas solicitações. Aguarde alguns segundos." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       
-      if (status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Serviço temporariamente indisponível. Tente novamente mais tarde." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      // Fallback response with basic info (no pricing)
+      const fallbackResponse = `A Ordem de Serviço nº ${os.numero_os} está atualmente com status: ${statusLabels[os.status] || os.status}.
 
-      // Fallback response with basic info
-      const fallbackResponse = `A Ordem de Serviço nº ${osData.numero_os} está atualmente com status: ${osData.status}.
+📅 Data de entrada: ${new Date(os.data_entrada).toLocaleDateString("pt-BR")}
+🚗 Veículo: ${veiculo ? `${veiculo.modelo} ${veiculo.ano || ""}` : "Não informado"}
 
-📋 Diagnóstico: ${osData.defeito_identificado}
+📅 Última atualização: ${new Date(os.updated_at).toLocaleDateString("pt-BR")}
 
-💰 Orçamento: ${osData.orcamento.valor} - ${osData.orcamento.status}
-
-📅 Última atualização: ${osData.ultima_atualizacao}
-
-${osData.relatorios.length > 0 ? `📝 Último relatório: ${osData.relatorios[0].descricao}` : ""}`;
+Para mais informações, entre em contato conosco.`;
 
       return new Response(
         JSON.stringify({ resposta: fallbackResponse }),
@@ -238,7 +242,7 @@ ${osData.relatorios.length > 0 ? `📝 Último relatório: ${osData.relatorios[0
   } catch (error) {
     console.error("Erro na função chat-os-ia:", error);
     return new Response(
-      JSON.stringify({ error: "Erro ao processar sua solicitação. Tente novamente." }),
+      JSON.stringify({ error: "Erro ao processar solicitação" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

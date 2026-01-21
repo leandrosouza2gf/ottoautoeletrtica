@@ -60,16 +60,18 @@ export function useStatusOS() {
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const consultarOS = async (numeroOS: number) => {
+  const consultarOS = async (numeroOS: number, token?: string) => {
     setIsLoading(true);
     setError(null);
     setOS(null);
     setMessages([]);
+    setAccessToken(token || null);
 
     try {
       const { data, error: fnError } = await supabase.functions.invoke('consultar-os-publica', {
-        body: { numero_os: numeroOS },
+        body: { numero_os: numeroOS, access_token: token },
       });
 
       if (fnError) {
@@ -88,7 +90,7 @@ export function useStatusOS() {
       setMessages([{
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `Olá! Encontrei a OS nº ${data.numero_os}. Como posso ajudar? Você pode me perguntar sobre o status, diagnóstico, orçamento ou andamento do serviço.`,
+        content: `Olá! Encontrei a OS nº ${data.numero_os}. Como posso ajudar? Você pode me perguntar sobre o status ou andamento do serviço.`,
         timestamp: new Date(),
       }]);
 
@@ -121,7 +123,7 @@ export function useStatusOS() {
 
     try {
       const { data, error: fnError } = await supabase.functions.invoke('chat-os-ia', {
-        body: { numero_os: os.numero_os, pergunta },
+        body: { numero_os: os.numero_os, pergunta, access_token: accessToken },
       });
 
       if (fnError) {
@@ -160,6 +162,7 @@ export function useStatusOS() {
     error,
     messages,
     isChatLoading,
+    accessToken,
     consultarOS,
     enviarPergunta,
     limpar,
