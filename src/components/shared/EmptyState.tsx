@@ -32,3 +32,5 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
 );
 
 EmptyState.displayName = 'EmptyState';
+
+// Force HMR refresh
