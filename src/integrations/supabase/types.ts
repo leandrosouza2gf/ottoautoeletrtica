@@ -245,6 +245,7 @@ export type Database = {
       }
       ordens_servico: {
         Row: {
+          access_token: string | null
           cliente_id: string
           created_at: string
           data_entrada: string
@@ -260,6 +261,7 @@ export type Database = {
           veiculo_id: string
         }
         Insert: {
+          access_token?: string | null
           cliente_id: string
           created_at?: string
           data_entrada?: string
@@ -275,6 +277,7 @@ export type Database = {
           veiculo_id: string
         }
         Update: {
+          access_token?: string | null
           cliente_id?: string
           created_at?: string
           data_entrada?: string
@@ -312,6 +315,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      os_access_logs: {
+        Row: {
+          created_at: string
+          id: string
+          ip_address: string | null
+          numero_os: number
+          success: boolean
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          numero_os: number
+          success?: boolean
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          numero_os?: number
+          success?: boolean
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
+      os_access_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          last_used_at: string | null
+          ordem_servico_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          ordem_servico_id: string
+          token?: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          ordem_servico_id?: string
+          token?: string
+        }
+        Relationships: []
       }
       pecas: {
         Row: {
